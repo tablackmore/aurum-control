@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & lint (both feature configs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+
+      - name: Rustfmt
+        run: cargo fmt --all --check
+
+      # The `pro` feature toggles the Pro-only Target variants, so both configs
+      # must compile, lint, and test: free consumers build without it, the pro
+      # app builds with it. A missed cfg-gate fails one config but not the other.
+      - name: Clippy (default / free)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Clippy (--features pro)
+        run: cargo clippy --all-targets --features pro -- -D warnings
+
+      - name: Test (default / free)
+        run: cargo test
+
+      - name: Test (--features pro)
+        run: cargo test --features pro
