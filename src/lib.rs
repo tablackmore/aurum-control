@@ -12,6 +12,14 @@ pub use message::{parse, MidiMessage};
 mod mapping;
 pub use mapping::{Action, Binding, ControlId, Deck, Kind, MidiMap, Mode, Options, Target};
 
+mod monitor;
+pub use monitor::MonitorEvent;
+
+/// Standalone tester harness (MIDI I/O + web UI). Built only with the `harness`
+/// feature so the AURUM app never pulls in `midir`/`tiny_http`.
+#[cfg(feature = "harness")]
+pub mod harness;
+
 pub fn midi_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

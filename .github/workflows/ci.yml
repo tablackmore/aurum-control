@@ -40,3 +40,14 @@ jobs:
 
       - name: Test (--features pro)
         run: cargo test --features pro
+
+      # The `harness` feature (the `ctl` tester binary) pulls in midir, whose
+      # Linux backend needs the ALSA dev headers.
+      - name: ALSA headers (for the harness MIDI backend)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Clippy (--features harness)
+        run: cargo clippy --all-targets --features harness -- -D warnings
+
+      - name: Test (--features harness)
+        run: cargo test --features harness

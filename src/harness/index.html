@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>aurum-control · MIDI monitor</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #0d0f12; color: #e6e8eb;
+  }
+  header {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid #23262c; background: #14171c;
+  }
+  h1 { font-size: 14px; margin: 0 8px 0 0; letter-spacing: .04em; color: #d9b24a; }
+  select, button {
+    font: inherit; background: #1b1f25; color: #e6e8eb; border: 1px solid #2c313a;
+    border-radius: 6px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button.primary { background: #d9b24a; color: #14171c; border-color: #d9b24a; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-left: auto; color: #8a919c; }
+  #status.on { color: #6fcf7f; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  main { padding: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 5px 16px; border-bottom: 1px solid #191c21; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #14171c; color: #8a919c; font-weight: 500;
+       border-bottom: 1px solid #23262c; }
+  td.raw { color: #8a919c; }
+  .kind { padding: 1px 7px; border-radius: 999px; font-size: 12px; }
+  .note_on  { background: #16341f; color: #6fcf7f; }
+  .note_off { background: #1c2430; color: #8aa6c8; }
+  .cc       { background: #2a2410; color: #d9b24a; }
+  .other    { background: #2a1620; color: #c87f9c; }
+  .empty { padding: 40px 16px; color: #6b7280; }
+  .hint { color: #6b7280; }
+</style>
+</head>
+<body>
+<header>
+  <h1>aurum-control</h1>
+  <span class="hint">MIDI monitor</span>
+  <div class="controls">
+    <select id="ports"><option value="">— choose a MIDI input —</option></select>
+    <button id="refresh">↻</button>
+    <button id="connect" class="primary" disabled>Connect</button>
+    <button id="clear">Clear</button>
+  </div>
+  <span id="status">no device</span>
+</header>
+<main>
+  <table>
+    <thead><tr><th>#</th><th>type</th><th>ch</th><th>data 1</th><th>data 2</th><th>raw</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty">Pick your controller and hit Connect, then touch a knob, pad, or jog — every message it sends shows up here. This is the quickest way to learn what to put in its profile.</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let since = 0, connected = false, polling = false;
+
+async function loadPorts() {
+  const names = await fetch('/api/ports').then(r => r.json()).catch(() => []);
+  const sel = $('ports');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— choose a MIDI input —</option>' +
+    names.map((n, i) => `<option value="${i}">${escapeHtml(n)}</option>`).join('');
+  if (current && current < names.length) sel.value = current;
+  $('connect').disabled = !sel.value;
+}
+
+async function connect() {
+  const i = $('ports').value;
+  if (i === '') return;
+  const res = await fetch('/api/connect?port=' + encodeURIComponent(i)).then(r => r.json()).catch(() => ({ok:false}));
+  if (res.ok) {
+    connected = true;
+    $('status').textContent = '● ' + res.name;
+    $('status').className = 'on';
+    if (!polling) poll();
+  } else {
+    $('status').textContent = 'error: ' + (res.error || 'could not connect');
+    $('status').className = '';
+  }
+}
+
+async function poll() {
+  polling = true;
+  try {
+    const data = await fetch('/api/events?since=' + since).then(r => r.json());
+    if (data.events && data.events.length) {
+      for (const item of data.events) addRow(item.seq, item.event);
+      $('empty').style.display = 'none';
+    }
+    since = data.next ?? since;
+  } catch (_) { /* server gone; stop */ polling = false; return; }
+  setTimeout(poll, 100);
+}
+
+function addRow(seq, e) {
+  const tb = $('rows');
+  const tr = document.createElement('tr');
+  const d1 = e.data1 ?? '';
+  const d2 = e.data2 ?? '';
+  tr.innerHTML =
+    `<td>${seq}</td>` +
+    `<td><span class="kind ${e.kind}">${e.kind.replace('_',' ')}</span></td>` +
+    `<td>${e.channel ?? ''}</td>` +
+    `<td>${d1}</td><td>${d2}</td>` +
+    `<td class="raw">${escapeHtml(e.raw)}</td>`;
+  tb.prepend(tr);
+  while (tb.children.length > 500) tb.removeChild(tb.lastChild);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+$('ports').addEventListener('change', () => { $('connect').disabled = !$('ports').value; });
+$('refresh').addEventListener('click', loadPorts);
+$('connect').addEventListener('click', connect);
+$('clear').addEventListener('click', () => { $('rows').innerHTML = ''; });
+loadPorts();
+</script>
+</body>
+</html>
