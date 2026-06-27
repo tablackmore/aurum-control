@@ -8,6 +8,13 @@ license = "MIT"
 [lib]
 name = "midi"
 
+[features]
+# When enabled, the `Target` enum carries the Pro-only controllable params
+# (per-stem FX send, colour filter, key transpose, drum pitch-lock, FX bus/slots).
+# The free app depends WITHOUT this feature, so those variants are absent and its
+# exhaustive `match Target` blocks need no Pro arms; the pro app enables it.
+pro = []
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

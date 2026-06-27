@@ -92,24 +92,34 @@ pub enum Target {
     BeatJump(Deck, f32),
     /// Set an active loop of `beats` length.
     LoopSet(Deck, f32),
-    // ── Pro targets (only reachable in the Pro build) ────────────
+    // ── Pro targets — gated behind the `pro` cargo feature so the free build's
+    // `Target` never carries them (free's exhaustive matches stay arm-free) ───
     /// Per-stem FX send amount.
+    #[cfg(feature = "pro")]
     StemSend(Deck, u8),
     /// Deck colour filter.
+    #[cfg(feature = "pro")]
     Filter(Deck),
     /// Key transpose, in semitones (continuous, scaled into [min,max]).
+    #[cfg(feature = "pro")]
     Transpose(Deck),
     /// Drum pitch-lock toggle.
+    #[cfg(feature = "pro")]
     DrumPitchLock(Deck),
     /// FX bus send level.
+    #[cfg(feature = "pro")]
     FxBusLevel(Deck),
     /// FX bus mute toggle.
+    #[cfg(feature = "pro")]
     FxBusMute(Deck),
     /// FX bus solo toggle.
+    #[cfg(feature = "pro")]
     FxBusSolo(Deck),
     /// Enable an FX slot.
+    #[cfg(feature = "pro")]
     FxSlotEnable(Deck, u8),
     /// FX slot wet/dry mix.
+    #[cfg(feature = "pro")]
     FxSlotMix(Deck, u8),
 }
 
@@ -127,10 +137,12 @@ impl Target {
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) => Kind::Trigger,
-            // Pro continuous + toggle targets.
+            // Pro continuous + toggle targets (only present with the `pro` feature).
+            #[cfg(feature = "pro")]
             StemSend(..) | Filter(_) | Transpose(_) | FxBusLevel(_) | FxSlotMix(..) => {
                 Kind::Continuous
             }
+            #[cfg(feature = "pro")]
             DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) => Kind::Toggle,
         }
     }
@@ -168,14 +180,23 @@ impl Target {
             Master => "Master".into(),
             CueMix => "Cue mix".into(),
             HeadphoneLevel => "Headphones".into(),
+            #[cfg(feature = "pro")]
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
+            #[cfg(feature = "pro")]
             Filter(d) => format!("Deck {} · Filter", d.tag()),
+            #[cfg(feature = "pro")]
             Transpose(d) => format!("Deck {} · Transpose", d.tag()),
+            #[cfg(feature = "pro")]
             DrumPitchLock(d) => format!("Deck {} · Drum pitch-lock", d.tag()),
+            #[cfg(feature = "pro")]
             FxBusLevel(d) => format!("Deck {} · FX level", d.tag()),
+            #[cfg(feature = "pro")]
             FxBusMute(d) => format!("Deck {} · FX mute", d.tag()),
+            #[cfg(feature = "pro")]
             FxBusSolo(d) => format!("Deck {} · FX solo", d.tag()),
+            #[cfg(feature = "pro")]
             FxSlotEnable(d, s) => format!("Deck {} · FX {} on", d.tag(), s + 1),
+            #[cfg(feature = "pro")]
             FxSlotMix(d, s) => format!("Deck {} · FX {} mix", d.tag(), s + 1),
         }
     }
@@ -251,6 +272,7 @@ impl Options {
             // Tempo is a playback-rate ratio: default to ±8%.
             Target::Tempo(_) => (0.92, 1.08),
             // Transpose is in semitones, centred at 0: default to ±12.
+            #[cfg(feature = "pro")]
             Target::Transpose(_) => (-12.0, 12.0),
             _ => (0.0, 1.0),
         };
@@ -994,7 +1016,8 @@ mod tests {
         assert_eq!(map.bindings()[0].target, Target::Crossfade);
     }
 
-    // ── Pro targets ──────────────────────────────────────────────
+    // ── Pro targets (only built with the `pro` feature) ──────────
+    #[cfg(feature = "pro")]
     #[test]
     fn pro_targets_classify_and_label() {
         assert_eq!(Target::StemSend(Deck::A, 0).kind(), Kind::Continuous);
@@ -1009,6 +1032,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "pro")]
     #[test]
     fn pro_default_modes_and_transpose_range() {
         assert_eq!(
