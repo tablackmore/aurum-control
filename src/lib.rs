@@ -25,6 +25,9 @@ pub mod harness;
 mod profile;
 pub use profile::{ActionValue, InputBinding, Profile, ProfileAction, RelKind};
 
+pub mod profiles;
+pub use profiles::builtin_for_port;
+
 pub fn midi_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
