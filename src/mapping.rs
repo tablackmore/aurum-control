@@ -99,6 +99,14 @@ pub enum Target {
     JogScratch(Deck),
     /// Jog ring pitch-bend — a signed tick delta nudges tempo transiently.
     JogBend(Deck),
+    // ── Library navigation (UI-bound; the app routes these to the browser, not
+    // the engine) ────────────────────────────────────────────────────────────
+    /// Scroll the library selection by a signed tick delta (browse encoder).
+    LibraryScroll,
+    /// Toggle the library panel open/closed (browse-encoder press).
+    LibraryOpen,
+    /// Load the highlighted library entry onto a deck (load buttons).
+    LoadDeck(Deck),
     // ── Pro targets — gated behind the `pro` cargo feature so the free build's
     // `Target` never carries them (free's exhaustive matches stay arm-free) ───
     /// Per-stem FX send amount.
@@ -152,12 +160,13 @@ impl Target {
         match self {
             StemVolume(..) | EqLow(_) | EqMid(_) | EqHigh(_) | Pan(_) | ChannelVolume(_)
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
-            | JogScratch(_) | JogBend(_) => Kind::Continuous,
+            | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
             StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
             | CueMonitor(_) | JogTouch(_) => Kind::Toggle,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
-            | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) => Kind::Trigger,
+            | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LibraryOpen
+            | LoadDeck(_) => Kind::Trigger,
             // Pro continuous + toggle targets (only present with the `pro` feature).
             #[cfg(feature = "pro")]
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) => Kind::Continuous,
@@ -208,6 +217,9 @@ impl Target {
             JogTouch(d) => format!("Deck {} · Jog touch", d.tag()),
             JogScratch(d) => format!("Deck {} · Jog scratch", d.tag()),
             JogBend(d) => format!("Deck {} · Jog bend", d.tag()),
+            LibraryScroll => "Library · Scroll".into(),
+            LibraryOpen => "Library · Open".into(),
+            LoadDeck(d) => format!("Library · Load deck {}", d.tag()),
             #[cfg(feature = "pro")]
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
             #[cfg(feature = "pro")]

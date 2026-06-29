@@ -80,6 +80,12 @@ Profile(
 
         // ───────── shared (browser/mixer channel 6) ─────────
         InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),
+        // library navigation: browse encoder (0xB6 0x40, relative centre-0),
+        // its press (0x96 0x41) toggles the panel, load buttons (0x96 0x46/0x47).
+        InputBinding(status: 0xB6, data1: 0x40, target: LibraryScroll,    rel: Some(Centre0)),
+        InputBinding(status: 0x96, data1: 0x41, target: LibraryOpen),
+        InputBinding(status: 0x96, data1: 0x46, target: LoadDeck(A)),
+        InputBinding(status: 0x96, data1: 0x47, target: LoadDeck(B)),
     ],
     // ───────── feedback: engine state → LEDs/VU (diffed by the app) ─────────
     // VU meters live on channel 1 for BOTH decks (B0 02 = left, B0 03 = right —
