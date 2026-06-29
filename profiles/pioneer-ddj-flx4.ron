@@ -1,0 +1,66 @@
+// Pioneer DDJ-FLX4 profile (DRAFT — schema formalized in Phase 2's `profile` module).
+// Addresses captured live; see docs/devices/pioneer-ddj-flx4.md.
+// Deck 2 mirrors deck 1 with the MIDI channel bumped by one (0x90->0x91, 0xB0->0xB1,
+// pads 0x97->0x99); expressed here per-deck via `deck` + a channel table.
+Profile(
+    name: "Pioneer DDJ-FLX4",
+    // Auto-load when a connected input port name matches:
+    port_match: "(?i)ddj-flx4",
+
+    // REQUIRED enable handshake: quiets the idle flood and unlocks the LEDs.
+    init: [ Sysex([0xF0,0x00,0x40,0x05,0x00,0x00,0x04,0x05,0x00,0x50,0x02,0xF7]) ],
+
+    // status uses the deck's channel: deck 1 = 0x.0, deck 2 = 0x.1 (e.g. note 0x9{d}).
+    inputs: [
+        // ── transport ──
+        Bind(note: 0x0B, deck_status: 0x90, target: Play(Deck),        mode: Toggle),
+        Bind(note: 0x0C, deck_status: 0x90, target: CueMonitor(Deck),  mode: Trigger),  // TODO: transport "cue" vs headphone-cue
+
+        // ── mixer (14-bit hi-res: value = MSB<<7 | LSB, LSB on cc+0x20) ──
+        Bind(cc: 0x04, deck_status: 0xB0, target: Trim(Deck),          hires: true),
+        Bind(cc: 0x07, deck_status: 0xB0, target: EqHigh(Deck),        hires: true),
+        Bind(cc: 0x0B, deck_status: 0xB0, target: EqMid(Deck),         hires: true),
+        Bind(cc: 0x0F, deck_status: 0xB0, target: EqLow(Deck),         hires: true),
+        Bind(cc: 0x13, deck_status: 0xB0, target: ChannelVolume(Deck), hires: true),
+        Bind(cc: 0x00, deck_status: 0xB0, target: Tempo(Deck),         hires: true, deadband: 24),  // swallow LSB jitter
+        // mixer/browser channel (0xB6) — not per-deck:
+        Bind(cc: 0x17, channel: 6, deck_cc_offset: true, target: Filter(Deck), hires: true),  // Pro target; no-op in free
+        Bind(cc: 0x1F, channel: 6, target: Crossfade,                  hires: true),
+
+        // ── jog (relative, centre 64) ──
+        Bind(note: 0x36, deck_status: 0x90, target: JogTouch(Deck),    mode: Toggle),
+        Bind(cc: 0x22, deck_status: 0xB0, target: JogScratch(Deck),    rel: SignedCentre64),  // scrub when touched
+        Bind(cc: 0x21, deck_status: 0xB0, target: JogBend(Deck),       rel: SignedCentre64),  // pitch-bend nudge
+
+        // ── pads (hot-cue mode): notes 0x00..0x07 on 0x97(d1)/0x99(d2) ──
+        PadRange(first_note: 0x00, deck_status: 0x97, target: HotCue(Deck), count: 8),
+
+        // ── pad-mode select (also LEDs) ──
+        Bind(note: 0x1B, deck_status: 0x90, target: PadMode(Deck, HotCue)),
+        Bind(note: 0x1E, deck_status: 0x90, target: PadMode(Deck, PadFx1)),
+        Bind(note: 0x20, deck_status: 0x90, target: PadMode(Deck, BeatJump)),
+        Bind(note: 0x22, deck_status: 0x90, target: PadMode(Deck, Sampler)),
+
+        // ── browser (channel 6 / 0xB6,0x96), relative centre 0 ──
+        Bind(cc: 0x40, channel: 6, target: LibraryScroll, rel: SignedCentre0),
+        Bind(note: 0x41, channel: 6, target: LibraryFocus,  mode: Trigger),
+        Bind(note: 0x46, channel: 6, target: LoadDeck(DeckA), mode: Trigger),
+        Bind(note: 0x47, channel: 6, target: LoadDeck(DeckB), mode: Trigger),
+    ],
+
+    // Engine state -> LED. Diffed; only changes are sent. Requires init first.
+    feedback: [
+        // VU meters live on channel 1 for BOTH decks (corrects the Mixxx B1 02 bug).
+        Vu(deck: DeckA, cc: 0x02, channel: 0),   // B0 02 vv, vv = level*127
+        Vu(deck: DeckB, cc: 0x03, channel: 0),   // B0 03 vv
+        // transport + mode LEDs: note-on 0x7F/0x00
+        Led(state: Playing(Deck),       note: 0x0B, deck_status: 0x90),
+        Led(state: CueArmed(Deck),      note: 0x0C, deck_status: 0x90),
+        Led(state: PadModeActive(Deck, HotCue),  note: 0x1B, deck_status: 0x90),
+        Led(state: PadModeActive(Deck, PadFx1),  note: 0x1E, deck_status: 0x90),
+        Led(state: PadModeActive(Deck, BeatJump),note: 0x20, deck_status: 0x90),
+        Led(state: PadModeActive(Deck, Sampler), note: 0x22, deck_status: 0x90),
+        // hot-cue pad RGB (colour palette TODO from Pioneer MIDI list)
+        PadLeds(deck_status: 0x97, first_note: 0x00, count: 8),
+    ],
+)
