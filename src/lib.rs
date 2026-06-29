@@ -23,7 +23,7 @@ pub use monitor::MonitorEvent;
 pub mod harness;
 
 mod profile;
-pub use profile::{ActionValue, InputBinding, Profile, ProfileAction, RelKind};
+pub use profile::{ActionValue, InputBinding, Profile, ProfileAction, ProfileDecoder, RelKind};
 
 pub mod feedback;
 pub use feedback::{FeedbackDiff, FeedbackRule, FeedbackSource, FeedbackState};
