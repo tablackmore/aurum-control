@@ -92,6 +92,13 @@ pub enum Target {
     BeatJump(Deck, f32),
     /// Set an active loop of `beats` length.
     LoopSet(Deck, f32),
+    // ── Jog (relative; driven by a device profile, not MIDI-learn) ───────────
+    /// Jog wheel touched (on/off) — gates scrub vs let-it-play.
+    JogTouch(Deck),
+    /// Jog platter scrub — a signed tick delta scrubs the playhead.
+    JogScratch(Deck),
+    /// Jog ring pitch-bend — a signed tick delta nudges tempo transiently.
+    JogBend(Deck),
     // ── Pro targets — gated behind the `pro` cargo feature so the free build's
     // `Target` never carries them (free's exhaustive matches stay arm-free) ───
     /// Per-stem FX send amount.
@@ -126,11 +133,10 @@ impl Target {
         use Target::*;
         match self {
             StemVolume(..) | EqLow(_) | EqMid(_) | EqHigh(_) | Pan(_) | ChannelVolume(_)
-            | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel => {
-                Kind::Continuous
-            }
+            | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
+            | JogScratch(_) | JogBend(_) => Kind::Continuous,
             StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
-            | CueMonitor(_) => Kind::Toggle,
+            | CueMonitor(_) | JogTouch(_) => Kind::Toggle,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) => Kind::Trigger,
@@ -175,6 +181,9 @@ impl Target {
             Master => "Master".into(),
             CueMix => "Cue mix".into(),
             HeadphoneLevel => "Headphones".into(),
+            JogTouch(d) => format!("Deck {} · Jog touch", d.tag()),
+            JogScratch(d) => format!("Deck {} · Jog scratch", d.tag()),
+            JogBend(d) => format!("Deck {} · Jog bend", d.tag()),
             #[cfg(feature = "pro")]
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
             #[cfg(feature = "pro")]
