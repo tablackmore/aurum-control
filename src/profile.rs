@@ -3,8 +3,9 @@
 //! writing a file, not code. Pure — no MIDI I/O, no engine dependency.
 
 use crate::feedback::{self, FeedbackRule, FeedbackState};
-use crate::{MidiMessage, Target};
+use crate::{Kind, MidiMessage, Target};
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// How a relative (endless-encoder) CC encodes its signed delta. The DDJ-FLX4
 /// alone uses both: its jog is centred at 64 (`0x41` = +1), its browse encoder
@@ -144,6 +145,92 @@ impl Profile {
     }
 }
 
+/// Reconstruct the `(status, data1)` address a binding is written against.
+fn msg_addr(msg: &MidiMessage) -> Option<(u8, u8)> {
+    match *msg {
+        MidiMessage::NoteOn { channel, note, .. } | MidiMessage::NoteOff { channel, note } => {
+            Some((0x90 | channel, note))
+        }
+        MidiMessage::ControlChange {
+            channel,
+            controller,
+            ..
+        } => Some((0xB0 | channel, controller)),
+        MidiMessage::Other => None,
+    }
+}
+
+/// Per-button runtime state for the stateful decoder.
+#[derive(Default)]
+struct ButtonState {
+    /// Whether the button is currently held (for press-edge detection).
+    down: bool,
+    /// Latched on/off state for Toggle targets.
+    toggle_on: bool,
+}
+
+/// A stateful wrapper over a [`Profile`] that applies the semantics a momentary
+/// controller can't express on its own, keyed off each target's [`Kind`]:
+///
+/// - **Toggle** (Play, stem mute/solo, cue): flips on each *press* and ignores
+///   the release — so a button tap latches instead of holding-to-engage.
+/// - **Trigger** (hot cues, loops, load): fires once on the press edge.
+/// - **Continuous** (knobs, faders, jog/encoders): passes straight through.
+///
+/// Without this, [`Profile::decode`]'s raw note-on→1.0 / note-off→0.0 makes every
+/// toggle behave as hold-to-engage. One decoder per connected device.
+pub struct ProfileDecoder {
+    profile: Profile,
+    buttons: HashMap<(u8, u8), ButtonState>,
+}
+
+impl ProfileDecoder {
+    /// Wrap a profile with fresh (all-off) button state.
+    pub fn new(profile: Profile) -> Self {
+        Self {
+            profile,
+            buttons: HashMap::new(),
+        }
+    }
+
+    /// The wrapped profile (for feedback rendering, `init` bytes, port match).
+    pub fn profile(&self) -> &Profile {
+        &self.profile
+    }
+
+    /// Decode one message, applying Toggle/Trigger/Continuous semantics.
+    pub fn decode(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
+        let raw = self.profile.decode(msg)?;
+        let kind = raw.target.kind();
+        if kind == Kind::Continuous {
+            return Some(raw); // knobs/faders/jog/encoders pass through
+        }
+        // Toggle / Trigger: act on the press edge only.
+        let addr = msg_addr(msg)?;
+        let pressed = matches!(raw.value, ActionValue::Absolute(v) if v >= 0.5);
+        let st = self.buttons.entry(addr).or_default();
+        let rising = pressed && !st.down;
+        st.down = pressed;
+        if !rising {
+            return None; // release or repeat — nothing to emit
+        }
+        let value = if kind == Kind::Toggle {
+            st.toggle_on = !st.toggle_on;
+            if st.toggle_on {
+                1.0
+            } else {
+                0.0
+            }
+        } else {
+            1.0 // Trigger
+        };
+        Some(ProfileAction {
+            target: raw.target,
+            value: ActionValue::Absolute(value),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,5 +343,95 @@ mod tests {
         assert_eq!(RelKind::Centre64.delta(0x3F), -1);
         assert_eq!(RelKind::Centre0.delta(0x01), 1);
         assert_eq!(RelKind::Centre0.delta(0x7F), -1);
+    }
+
+    const DECODER_SAMPLE: &str = r#"
+        Profile(
+            name: "Test",
+            port_match: "test",
+            inputs: [
+                InputBinding(status: 0x90, data1: 0x0B, target: Play(A)),       // Toggle
+                InputBinding(status: 0x97, data1: 0x00, target: HotCue(A, 0)),  // Trigger
+                InputBinding(status: 0xB0, data1: 0x07, target: EqHigh(A)),     // Continuous
+                InputBinding(status: 0xB0, data1: 0x22, target: Seek(A), rel: Some(Centre64)),
+            ],
+        )
+    "#;
+
+    fn note_on(status: u8, note: u8) -> MidiMessage {
+        MidiMessage::NoteOn {
+            channel: status & 0x0F,
+            note,
+            velocity: 127,
+        }
+    }
+    fn note_off(status: u8, note: u8) -> MidiMessage {
+        MidiMessage::NoteOff {
+            channel: status & 0x0F,
+            note,
+        }
+    }
+
+    #[test]
+    fn decoder_toggle_flips_on_press_and_ignores_release() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(DECODER_SAMPLE).unwrap());
+        // First press → on.
+        let a = d.decode(&note_on(0x90, 0x0B)).unwrap();
+        assert_eq!(a.target, Target::Play(Deck::A));
+        assert_eq!(a.value, ActionValue::Absolute(1.0));
+        // Release → nothing.
+        assert!(d.decode(&note_off(0x90, 0x0B)).is_none());
+        // Second press → off.
+        assert_eq!(
+            d.decode(&note_on(0x90, 0x0B)).unwrap().value,
+            ActionValue::Absolute(0.0)
+        );
+        // Its release → nothing; third press → on again.
+        assert!(d.decode(&note_off(0x90, 0x0B)).is_none());
+        assert_eq!(
+            d.decode(&note_on(0x90, 0x0B)).unwrap().value,
+            ActionValue::Absolute(1.0)
+        );
+    }
+
+    #[test]
+    fn decoder_trigger_fires_on_press_only() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(DECODER_SAMPLE).unwrap());
+        let a = d.decode(&note_on(0x97, 0x00)).unwrap();
+        assert_eq!(a.target, Target::HotCue(Deck::A, 0));
+        assert_eq!(a.value, ActionValue::Absolute(1.0));
+        // Release emits nothing; a second press fires again (1.0, not toggled off).
+        assert!(d.decode(&note_off(0x97, 0x00)).is_none());
+        assert_eq!(
+            d.decode(&note_on(0x97, 0x00)).unwrap().value,
+            ActionValue::Absolute(1.0)
+        );
+    }
+
+    #[test]
+    fn decoder_continuous_passes_through() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(DECODER_SAMPLE).unwrap());
+        // Absolute knob.
+        assert_eq!(
+            d.decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x07,
+                value: 127,
+            })
+            .unwrap()
+            .value,
+            ActionValue::Absolute(1.0)
+        );
+        // Relative encoder → signed delta, unchanged by the stateful layer.
+        assert_eq!(
+            d.decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x22,
+                value: 0x41,
+            })
+            .unwrap()
+            .value,
+            ActionValue::Delta(1)
+        );
     }
 }
