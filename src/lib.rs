@@ -20,6 +20,9 @@ pub use monitor::MonitorEvent;
 #[cfg(feature = "harness")]
 pub mod harness;
 
+mod profile;
+pub use profile::{InputBinding, Profile, RelKind};
+
 pub fn midi_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

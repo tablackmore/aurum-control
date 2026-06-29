@@ -27,5 +27,6 @@ required-features = ["harness"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ron = "0.8"
 midir = { version = "0.10", optional = true }
 tiny_http = { version = "0.12", optional = true }
