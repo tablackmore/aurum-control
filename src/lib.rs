@@ -21,7 +21,7 @@ pub use monitor::MonitorEvent;
 pub mod harness;
 
 mod profile;
-pub use profile::{InputBinding, Profile, RelKind};
+pub use profile::{ActionValue, InputBinding, Profile, ProfileAction, RelKind};
 
 pub fn midi_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
