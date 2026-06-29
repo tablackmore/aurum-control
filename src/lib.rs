@@ -12,6 +12,8 @@ pub use message::{parse, MidiMessage};
 mod mapping;
 pub use mapping::{Action, Binding, ControlId, Deck, Kind, MidiMap, Mode, Options, Target};
 
+pub mod jog;
+
 mod monitor;
 pub use monitor::MonitorEvent;
 
