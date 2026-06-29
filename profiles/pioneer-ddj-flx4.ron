@@ -32,8 +32,16 @@ Profile(
         Bind(cc: 0x22, deck_status: 0xB0, target: JogScratch(Deck),    rel: SignedCentre64),  // scrub when touched
         Bind(cc: 0x21, deck_status: 0xB0, target: JogBend(Deck),       rel: SignedCentre64),  // pitch-bend nudge
 
-        // ── pads (hot-cue mode): notes 0x00..0x07 on 0x97(d1)/0x99(d2) ──
+        // ── pads, HOT CUE mode: notes 0x00..0x07 on 0x97(d1)/0x99(d2) ──
         PadRange(first_note: 0x00, deck_status: 0x97, target: HotCue(Deck), count: 8),
+
+        // ── pads, SAMPLER mode REPURPOSED for stems (AURUM is a stem app) ──
+        // The FLX4 sends 0x30..0x37 only while in Sampler mode, so binding that
+        // range here makes those pads control stems without any mode logic.
+        //   top row    0x30..0x33 -> mute stems 0..3 (drums, bass, vocals, melody)
+        //   bottom row 0x34..0x37 -> solo stems 0..3
+        PadRange(first_note: 0x30, deck_status: 0x97, target: StemMute(Deck), count: 4, mode: Toggle),
+        PadRange(first_note: 0x34, deck_status: 0x97, target: StemSolo(Deck), count: 4, mode: Toggle),
 
         // ── pad-mode select (also LEDs) ──
         Bind(note: 0x1B, deck_status: 0x90, target: PadMode(Deck, HotCue)),
@@ -62,5 +70,8 @@ Profile(
         Led(state: PadModeActive(Deck, Sampler), note: 0x22, deck_status: 0x90),
         // hot-cue pad RGB (colour palette TODO from Pioneer MIDI list)
         PadLeds(deck_status: 0x97, first_note: 0x00, count: 8),
+        // sampler-mode stem pads: top row lit when that stem is MUTED,
+        // bottom row lit when SOLOED (colours per stem — drums/bass/vocals/melody).
+        StemPadLeds(deck_status: 0x97, mute_first: 0x30, solo_first: 0x34),
     ],
 )
