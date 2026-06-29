@@ -2,6 +2,7 @@
 //! feedback) described in RON and loaded at runtime, so adding a device is
 //! writing a file, not code. Pure — no MIDI I/O, no engine dependency.
 
+use crate::feedback::{self, FeedbackRule, FeedbackState};
 use crate::{MidiMessage, Target};
 use serde::Deserialize;
 
@@ -60,6 +61,10 @@ pub struct Profile {
     pub init: Vec<Vec<u8>>,
     #[serde(default)]
     pub inputs: Vec<InputBinding>,
+    /// LED/VU feedback rules — which engine value lights which control. Empty
+    /// for input-only profiles.
+    #[serde(default)]
+    pub feedback: Vec<FeedbackRule>,
 }
 
 /// The decoded result of one input message: which [`Target`], and the value to
@@ -91,6 +96,13 @@ impl Profile {
         port_name
             .to_ascii_lowercase()
             .contains(&self.port_match.to_ascii_lowercase())
+    }
+
+    /// Render this profile's feedback rules against the given engine state into
+    /// the 3-byte MIDI messages to send (one per rule). The app diffs successive
+    /// frames (via [`feedback::FeedbackDiff`]) and owns the MIDI output.
+    pub fn render_feedback(&self, state: &FeedbackState) -> Vec<[u8; 3]> {
+        feedback::render(&self.feedback, state)
     }
 
     /// Resolve an incoming MIDI message to an action via this profile's bindings.
