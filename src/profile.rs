@@ -2,7 +2,7 @@
 //! feedback) described in RON and loaded at runtime, so adding a device is
 //! writing a file, not code. Pure — no MIDI I/O, no engine dependency.
 
-use crate::Target;
+use crate::{MidiMessage, Target};
 use serde::Deserialize;
 
 /// How a relative (endless-encoder) CC encodes its signed delta. The DDJ-FLX4
@@ -62,6 +62,24 @@ pub struct Profile {
     pub inputs: Vec<InputBinding>,
 }
 
+/// The decoded result of one input message: which [`Target`], and the value to
+/// apply.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProfileAction {
+    pub target: Target,
+    pub value: ActionValue,
+}
+
+/// How a control's value should be applied. Buttons/knobs/faders carry an
+/// absolute `0..1`; endless encoders (jog, browse) carry a signed tick delta.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ActionValue {
+    /// Absolute parameter in `0..=1` (button on/off, knob, fader).
+    Absolute(f32),
+    /// Signed tick delta from a relative encoder (jog scrub, browse).
+    Delta(i32),
+}
+
 impl Profile {
     /// Parse a profile from RON source.
     pub fn from_ron(src: &str) -> Result<Self, ron::error::SpannedError> {
@@ -73,6 +91,44 @@ impl Profile {
         port_name
             .to_ascii_lowercase()
             .contains(&self.port_match.to_ascii_lowercase())
+    }
+
+    /// Resolve an incoming MIDI message to an action via this profile's bindings.
+    /// Note on/off → absolute 1.0/0.0; a relative-flagged CC → a signed delta;
+    /// any other CC → absolute `value/127`. `None` if nothing binds the control.
+    ///
+    /// (14-bit hi-res currently resolves at 7-bit from the MSB; the LSB CC simply
+    /// has no binding and is ignored — true 14-bit accumulation lands next.)
+    pub fn decode(&self, msg: &MidiMessage) -> Option<ProfileAction> {
+        // Reconstruct the (status, data1) the binding is written against.
+        let (status, data1, cc): (u8, u8, Option<u8>) = match *msg {
+            MidiMessage::NoteOn { channel, note, .. } => (0x90 | channel, note, None),
+            MidiMessage::NoteOff { channel, note } => (0x90 | channel, note, None),
+            MidiMessage::ControlChange {
+                channel,
+                controller,
+                value,
+            } => (0xB0 | channel, controller, Some(value)),
+            MidiMessage::Other => return None,
+        };
+        let b = self
+            .inputs
+            .iter()
+            .find(|b| b.status == status && b.data1 == data1)?;
+        let value = match (cc, b.rel) {
+            // CC with a relative encoding → signed delta.
+            (Some(v), Some(kind)) => ActionValue::Delta(kind.delta(v)),
+            // Absolute CC → 0..1.
+            (Some(v), None) => ActionValue::Absolute(v as f32 / 127.0),
+            // Note: on → 1.0, off → 0.0 (the parser maps velocity 0 to NoteOff).
+            (None, _) => {
+                ActionValue::Absolute(matches!(msg, MidiMessage::NoteOn { .. }) as u8 as f32)
+            }
+        };
+        Some(ProfileAction {
+            target: b.target,
+            value,
+        })
     }
 }
 
@@ -111,6 +167,75 @@ mod tests {
         assert!(p.matches_port("DDJ-FLX4"));
         assert!(p.matches_port("Pioneer DDJ-FLX4 MIDI 1"));
         assert!(!p.matches_port("Numark Mixtrack"));
+    }
+
+    #[test]
+    fn decode_button_press_and_release() {
+        let p = Profile::from_ron(SAMPLE).unwrap();
+        let on = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 0,
+                note: 0x0B,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(on.target, Target::Play(Deck::A));
+        assert_eq!(on.value, ActionValue::Absolute(1.0));
+        let off = p
+            .decode(&MidiMessage::NoteOff {
+                channel: 0,
+                note: 0x0B,
+            })
+            .unwrap();
+        assert_eq!(off.value, ActionValue::Absolute(0.0));
+    }
+
+    #[test]
+    fn decode_absolute_cc_to_0_1() {
+        let p = Profile::from_ron(SAMPLE).unwrap();
+        let a = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x07,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(a.target, Target::EqHigh(Deck::A));
+        assert_eq!(a.value, ActionValue::Absolute(1.0));
+    }
+
+    #[test]
+    fn decode_relative_cc_to_signed_delta() {
+        let p = Profile::from_ron(SAMPLE).unwrap();
+        let up = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x22,
+                value: 0x41,
+            })
+            .unwrap();
+        assert_eq!(up.target, Target::Seek(Deck::A));
+        assert_eq!(up.value, ActionValue::Delta(1));
+        let down = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x22,
+                value: 0x3F,
+            })
+            .unwrap();
+        assert_eq!(down.value, ActionValue::Delta(-1));
+    }
+
+    #[test]
+    fn decode_unbound_control_is_none() {
+        let p = Profile::from_ron(SAMPLE).unwrap();
+        assert!(p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 0x7E,
+                value: 0,
+            })
+            .is_none());
     }
 
     #[test]
