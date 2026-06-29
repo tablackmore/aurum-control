@@ -106,9 +106,6 @@ pub enum Target {
     /// Drum pitch-lock toggle.
     #[cfg(feature = "pro")]
     DrumPitchLock(Deck),
-    /// FX bus send level.
-    #[cfg(feature = "pro")]
-    FxBusLevel(Deck),
     /// FX bus mute toggle.
     #[cfg(feature = "pro")]
     FxBusMute(Deck),
@@ -139,9 +136,7 @@ impl Target {
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) => Kind::Trigger,
             // Pro continuous + toggle targets (only present with the `pro` feature).
             #[cfg(feature = "pro")]
-            StemSend(..) | Filter(_) | Transpose(_) | FxBusLevel(_) | FxSlotMix(..) => {
-                Kind::Continuous
-            }
+            StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) => Kind::Continuous,
             #[cfg(feature = "pro")]
             DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) => Kind::Toggle,
         }
@@ -188,8 +183,6 @@ impl Target {
             Transpose(d) => format!("Deck {} · Transpose", d.tag()),
             #[cfg(feature = "pro")]
             DrumPitchLock(d) => format!("Deck {} · Drum pitch-lock", d.tag()),
-            #[cfg(feature = "pro")]
-            FxBusLevel(d) => format!("Deck {} · FX level", d.tag()),
             #[cfg(feature = "pro")]
             FxBusMute(d) => format!("Deck {} · FX mute", d.tag()),
             #[cfg(feature = "pro")]
