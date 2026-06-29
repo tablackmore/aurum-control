@@ -8,9 +8,11 @@
 // Deck channels: deck A = note 0x90 / CC 0xB0 / pads 0x97; deck B = 0x91 / 0xB1 / 0x99
 // (deck B mirrors A with the channel nibble +1). Browser/mixer = channel 6 (0xB6).
 //
-// v1 limitations (deferred): hi-res knobs resolve at 7-bit (MSB only); the channel
-// filter knob (Pro-only `Filter` target) and the browse/load + pad-mode/feedback
-// controls are not bound here yet.
+// v1 limitations (deferred): hi-res knobs resolve at 7-bit (MSB only); the
+// browse/load and pad-mode/feedback controls are not bound here yet.
+// CFX (colour FX) knobs → Filter confirmed live; Pad FX 1 note addresses are
+// inferred from the standard Pioneer N×0x10 pad-mode layout — MUST be verified
+// live on the unit with the `ctl` harness before relying on them.
 Profile(
     name: "Pioneer DDJ-FLX4",
     // Case-insensitive substring against the input port name.
@@ -48,6 +50,16 @@ Profile(
         InputBinding(status: 0x97, data1: 0x35, target: StemSolo(A, 1)),
         InputBinding(status: 0x97, data1: 0x36, target: StemSolo(A, 2)),
         InputBinding(status: 0x97, data1: 0x37, target: StemSolo(A, 3)),
+        // Pad FX 1 mode pads 0x10..0x17 (INFERRED — standard Pioneer N×0x10 layout;
+        // verify live with `ctl` harness before relying on these addresses)
+        InputBinding(status: 0x97, data1: 0x10, target: BeatRepeatRoll(A, 1.0)),  // 1/4 roll (hold)
+        InputBinding(status: 0x97, data1: 0x11, target: BeatRepeatRoll(A, 0.5)),  // 1/8 roll
+        InputBinding(status: 0x97, data1: 0x12, target: BeatRepeatRoll(A, 0.25)), // 1/16 roll
+        InputBinding(status: 0x97, data1: 0x13, target: VinylBrake(A)),           // brake (hold)
+        InputBinding(status: 0x97, data1: 0x14, target: Riser(A)),                // riser (trigger)
+        InputBinding(status: 0x97, data1: 0x15, target: FxSlotEnable(A, 0)),      // FX slot 1
+        InputBinding(status: 0x97, data1: 0x16, target: FxSlotEnable(A, 1)),      // FX slot 2
+        InputBinding(status: 0x97, data1: 0x17, target: FxSlotEnable(A, 2)),      // FX slot 3
 
         // ───────── Deck B (note 0x91, CC 0xB1, pads 0x99) ─────────
         InputBinding(status: 0x91, data1: 0x0B, target: Play(B)),
@@ -77,9 +89,22 @@ Profile(
         InputBinding(status: 0x99, data1: 0x35, target: StemSolo(B, 1)),
         InputBinding(status: 0x99, data1: 0x36, target: StemSolo(B, 2)),
         InputBinding(status: 0x99, data1: 0x37, target: StemSolo(B, 3)),
+        // Pad FX 1 mode pads 0x10..0x17 (INFERRED — standard Pioneer N×0x10 layout;
+        // verify live with `ctl` harness before relying on these addresses)
+        InputBinding(status: 0x99, data1: 0x10, target: BeatRepeatRoll(B, 1.0)),  // 1/4 roll (hold)
+        InputBinding(status: 0x99, data1: 0x11, target: BeatRepeatRoll(B, 0.5)),  // 1/8 roll
+        InputBinding(status: 0x99, data1: 0x12, target: BeatRepeatRoll(B, 0.25)), // 1/16 roll
+        InputBinding(status: 0x99, data1: 0x13, target: VinylBrake(B)),           // brake (hold)
+        InputBinding(status: 0x99, data1: 0x14, target: Riser(B)),                // riser (trigger)
+        InputBinding(status: 0x99, data1: 0x15, target: FxSlotEnable(B, 0)),      // FX slot 1
+        InputBinding(status: 0x99, data1: 0x16, target: FxSlotEnable(B, 1)),      // FX slot 2
+        InputBinding(status: 0x99, data1: 0x17, target: FxSlotEnable(B, 2)),      // FX slot 3
 
         // ───────── shared (browser/mixer channel 6) ─────────
         InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),
+        // CFX (colour FX) knobs — addresses confirmed live on hardware (ch 6)
+        InputBinding(status: 0xB6, data1: 0x17, target: Filter(A),        hires: true),
+        InputBinding(status: 0xB6, data1: 0x18, target: Filter(B),        hires: true),
         // library navigation: browse encoder (0xB6 0x40, relative centre-0),
         // its press (0x96 0x41) toggles the panel, load buttons (0x96 0x46/0x47).
         InputBinding(status: 0xB6, data1: 0x40, target: LibraryScroll,    rel: Some(Centre0)),

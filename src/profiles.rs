@@ -13,8 +13,8 @@ const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4];
 
 /// Parse and return the first built-in profile whose `port_match` matches the
 /// given MIDI input port name (case-insensitive substring). `None` if no
-/// built-in claims the port. A built-in that fails to parse (e.g. it references
-/// a feature-gated target absent from this build) is skipped, not matched.
+/// built-in claims the port. A built-in that fails to parse is skipped, not
+/// matched.
 pub fn builtin_for_port(port_name: &str) -> Option<Profile> {
     BUILTINS.iter().find_map(|src| {
         let p = Profile::from_ron(src).ok()?;
@@ -186,5 +186,57 @@ mod tests {
             })
             .unwrap();
         assert_eq!(solo.target, Target::StemSolo(Deck::A, 0));
+    }
+
+    /// Checks that the FLX4 profile carries the new FX/CFX bindings, confirming
+    /// `every_builtin_parses` handles extended targets in the default feature config.
+    #[test]
+    fn flx4_includes_fx_and_cfx_bindings() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // CFX knob deck A → Filter(A) (confirmed address, ch 6 CC 0x17)
+        let filter_a = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 6,
+                controller: 0x17,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(filter_a.target, Target::Filter(Deck::A));
+        // Pad FX 1 pad 0x10 deck A (ch 7 = 0x97) → BeatRepeatRoll(A, 1.0)
+        let roll = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x10,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(roll.target, Target::BeatRepeatRoll(Deck::A, 1.0));
+        // Pad 0x13 deck A → VinylBrake(A)
+        let brake = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x13,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(brake.target, Target::VinylBrake(Deck::A));
+        // Pad 0x14 deck A → Riser(A)
+        let riser = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x14,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(riser.target, Target::Riser(Deck::A));
+        // Pad 0x15 deck A → FxSlotEnable(A, 0)
+        let fx1 = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x15,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(fx1.target, Target::FxSlotEnable(Deck::A, 0));
     }
 }
