@@ -107,49 +107,37 @@ pub enum Target {
     LibraryOpen,
     /// Load the highlighted library entry onto a deck (load buttons).
     LoadDeck(Deck),
-    // ── Pro targets — gated behind the `pro` cargo feature so the free build's
-    // `Target` never carries them (free's exhaustive matches stay arm-free) ───
+    // ── Universal extended targets — part of the mapping vocabulary for all
+    // builds. Whether a target is *implemented* is the host's responsibility;
+    // a free host may no-op any of these. Profiles (e.g. FLX4) bind them
+    // unconditionally so the same RON ships regardless of feature config. ───
     /// Per-stem FX send amount.
-    #[cfg(feature = "pro")]
     StemSend(Deck, u8),
     /// Deck colour filter.
-    #[cfg(feature = "pro")]
     Filter(Deck),
     /// Key transpose, in semitones (continuous, scaled into [min,max]).
-    #[cfg(feature = "pro")]
     Transpose(Deck),
     /// Drum pitch-lock toggle.
-    #[cfg(feature = "pro")]
     DrumPitchLock(Deck),
     /// FX bus mute toggle.
-    #[cfg(feature = "pro")]
     FxBusMute(Deck),
     /// FX bus solo toggle.
-    #[cfg(feature = "pro")]
     FxBusSolo(Deck),
     /// Enable an FX slot.
-    #[cfg(feature = "pro")]
     FxSlotEnable(Deck, u8),
     /// FX slot wet/dry mix.
-    #[cfg(feature = "pro")]
     FxSlotMix(Deck, u8),
     /// FX slot effect-type select (continuous; the host quantizes 0..1 to its effect list). `u8` = slot.
-    #[cfg(feature = "pro")]
     FxSlotType(Deck, u8),
     /// FX slot parameter knob (continuous; scaled into [min,max] per binding). `u8`s = slot, param index.
-    #[cfg(feature = "pro")]
     FxSlotParam(Deck, u8, u8),
     /// FX slot tempo-sync division (continuous; the host quantizes to the effect's divisions). `u8` = slot.
-    #[cfg(feature = "pro")]
     FxSlotDivision(Deck, u8),
     /// Performance FX: vinyl turntable brake/start (held = brake, release = spin back up).
-    #[cfg(feature = "pro")]
     VinylBrake(Deck),
     /// Performance FX: beat-repeat loop roll of `beats` length (held). Mirrors `BeatJump(Deck, f32)`.
-    #[cfg(feature = "pro")]
     BeatRepeatRoll(Deck, f32),
     /// Performance FX: noise/riser build-up sweep (one-shot trigger).
-    #[cfg(feature = "pro")]
     Riser(Deck),
 }
 
@@ -167,16 +155,11 @@ impl Target {
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LibraryOpen
             | LoadDeck(_) => Kind::Trigger,
-            // Pro continuous + toggle targets (only present with the `pro` feature).
-            #[cfg(feature = "pro")]
-            StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) => Kind::Continuous,
-            #[cfg(feature = "pro")]
-            FxSlotType(..) | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
-            #[cfg(feature = "pro")]
-            DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) => Kind::Toggle,
-            #[cfg(feature = "pro")]
-            VinylBrake(..) | BeatRepeatRoll(..) => Kind::Toggle,
-            #[cfg(feature = "pro")]
+            // Extended targets — continuous, toggle, or trigger as the param requires.
+            StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
+            | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
+            DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) | VinylBrake(..)
+            | BeatRepeatRoll(..) => Kind::Toggle,
             Riser(..) => Kind::Trigger,
         }
     }
@@ -220,33 +203,19 @@ impl Target {
             LibraryScroll => "Library · Scroll".into(),
             LibraryOpen => "Library · Open".into(),
             LoadDeck(d) => format!("Library · Load deck {}", d.tag()),
-            #[cfg(feature = "pro")]
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
-            #[cfg(feature = "pro")]
             Filter(d) => format!("Deck {} · Filter", d.tag()),
-            #[cfg(feature = "pro")]
             Transpose(d) => format!("Deck {} · Transpose", d.tag()),
-            #[cfg(feature = "pro")]
             DrumPitchLock(d) => format!("Deck {} · Drum pitch-lock", d.tag()),
-            #[cfg(feature = "pro")]
             FxBusMute(d) => format!("Deck {} · FX mute", d.tag()),
-            #[cfg(feature = "pro")]
             FxBusSolo(d) => format!("Deck {} · FX solo", d.tag()),
-            #[cfg(feature = "pro")]
             FxSlotEnable(d, s) => format!("Deck {} · FX {} on", d.tag(), s + 1),
-            #[cfg(feature = "pro")]
             FxSlotMix(d, s) => format!("Deck {} · FX {} mix", d.tag(), s + 1),
-            #[cfg(feature = "pro")]
             FxSlotType(d, s) => format!("Deck {} · FX{} Type", d.tag(), s + 1),
-            #[cfg(feature = "pro")]
             FxSlotParam(d, s, p) => format!("Deck {} · FX{} P{}", d.tag(), s + 1, p + 1),
-            #[cfg(feature = "pro")]
             FxSlotDivision(d, s) => format!("Deck {} · FX{} Beat", d.tag(), s + 1),
-            #[cfg(feature = "pro")]
             VinylBrake(d) => format!("Deck {} · Vinyl Brake", d.tag()),
-            #[cfg(feature = "pro")]
             BeatRepeatRoll(d, beats) => format!("Deck {} · Beat Roll {}", d.tag(), beats),
-            #[cfg(feature = "pro")]
             Riser(d) => format!("Deck {} · Riser", d.tag()),
         }
     }
@@ -322,7 +291,6 @@ impl Options {
             // Tempo is a playback-rate ratio: default to ±8%.
             Target::Tempo(_) => (0.92, 1.08),
             // Transpose is in semitones, centred at 0: default to ±12.
-            #[cfg(feature = "pro")]
             Target::Transpose(_) => (-12.0, 12.0),
             _ => (0.0, 1.0),
         };
@@ -1066,10 +1034,9 @@ mod tests {
         assert_eq!(map.bindings()[0].target, Target::Crossfade);
     }
 
-    // ── Pro targets (only built with the `pro` feature) ──────────
-    #[cfg(feature = "pro")]
+    // ── Extended targets (universal — always present) ────────────
     #[test]
-    fn pro_targets_classify_and_label() {
+    fn extended_targets_classify_and_label() {
         assert_eq!(Target::StemSend(Deck::A, 0).kind(), Kind::Continuous);
         assert_eq!(Target::FxSlotMix(Deck::B, 2).kind(), Kind::Continuous);
         assert_eq!(Target::DrumPitchLock(Deck::A).kind(), Kind::Toggle);
@@ -1082,9 +1049,8 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "pro")]
     #[test]
-    fn pro_default_modes_and_transpose_range() {
+    fn extended_default_modes_and_transpose_range() {
         assert_eq!(
             Options::for_target(Target::StemSend(Deck::A, 0)).mode,
             Mode::Absolute
@@ -1097,10 +1063,8 @@ mod tests {
         assert_eq!((tr.min, tr.max), (-12.0, 12.0));
     }
 
-    #[cfg(feature = "pro")]
     #[test]
     fn fx_perf_targets_kind_and_label() {
-        use crate::mapping::Deck;
         // kind checks
         assert_eq!(Target::FxSlotType(Deck::A, 0).kind(), Kind::Continuous);
         assert_eq!(Target::FxSlotParam(Deck::A, 0, 0).kind(), Kind::Continuous);

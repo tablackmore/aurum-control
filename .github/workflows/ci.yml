@@ -26,20 +26,11 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --all --check
 
-      # The `pro` feature toggles the Pro-only Target variants, so both configs
-      # must compile, lint, and test: free consumers build without it, the pro
-      # app builds with it. A missed cfg-gate fails one config but not the other.
-      - name: Clippy (default / free)
+      - name: Clippy (default)
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Clippy (--features pro)
-        run: cargo clippy --all-targets --features pro -- -D warnings
-
-      - name: Test (default / free)
+      - name: Test (default)
         run: cargo test
-
-      - name: Test (--features pro)
-        run: cargo test --features pro
 
       # The `harness` feature (the `ctl` tester binary) pulls in midir, whose
       # Linux backend needs the ALSA dev headers.

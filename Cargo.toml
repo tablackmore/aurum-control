@@ -9,12 +9,6 @@ license = "MIT"
 name = "midi"
 
 [features]
-# When enabled, the `Target` enum carries the Pro-only controllable params
-# (per-stem FX send, colour filter, key transpose, drum pitch-lock, FX bus/slots).
-# The free app depends WITHOUT this feature, so those variants are absent and its
-# exhaustive `match Target` blocks need no Pro arms; the pro app enables it.
-pro = []
-
 # The standalone tester harness (the `ctl` binary + its web UI). The ONLY thing
 # that pulls in MIDI I/O (`midir`) and the web server (`tiny_http`); the AURUM app
 # depends on the lib with default features, so neither enters the app.
