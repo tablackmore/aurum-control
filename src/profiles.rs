@@ -107,6 +107,24 @@ mod tests {
     }
 
     #[test]
+    fn flx4_feedback_renders_vu_and_play_leds() {
+        use crate::FeedbackState;
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let state = FeedbackState {
+            deck_level: [1.0, 0.0],
+            deck_playing: [true, false],
+            master_level: 0.0,
+        };
+        let frame = p.render_feedback(&state);
+        // Deck A VU full (B0 02 7F), deck B VU silent (B0 03 00),
+        // deck A play LED on (90 0B 7F), deck B play LED off (91 0B 00).
+        assert_eq!(frame[0], [0xB0, 0x02, 127]);
+        assert_eq!(frame[1], [0xB0, 0x03, 0]);
+        assert_eq!(frame[2], [0x90, 0x0B, 0x7F]);
+        assert_eq!(frame[3], [0x91, 0x0B, 0x00]);
+    }
+
+    #[test]
     fn flx4_decodes_stem_pads() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // Sampler-mode pad 0x32 on pad channel 0x97 → mute stem 2, deck A.

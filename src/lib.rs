@@ -25,6 +25,9 @@ pub mod harness;
 mod profile;
 pub use profile::{ActionValue, InputBinding, Profile, ProfileAction, RelKind};
 
+pub mod feedback;
+pub use feedback::{FeedbackDiff, FeedbackRule, FeedbackSource, FeedbackState};
+
 pub mod profiles;
 pub use profiles::builtin_for_port;
 

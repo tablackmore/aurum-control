@@ -81,4 +81,14 @@ Profile(
         // ───────── shared (browser/mixer channel 6) ─────────
         InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),
     ],
+    // ───────── feedback: engine state → LEDs/VU (diffed by the app) ─────────
+    // VU meters live on channel 1 for BOTH decks (B0 02 = left, B0 03 = right —
+    // corrects the Mixxx B1 02 bug). Play LEDs are note-on 0x7F/0x00 on the deck
+    // channel. Requires the enable SysEx (sent on connect) first.
+    feedback: [
+        FeedbackRule(source: DeckLevel(A),   status: 0xB0, data1: 0x02),
+        FeedbackRule(source: DeckLevel(B),   status: 0xB0, data1: 0x03),
+        FeedbackRule(source: DeckPlaying(A), status: 0x90, data1: 0x0B),
+        FeedbackRule(source: DeckPlaying(B), status: 0x91, data1: 0x0B),
+    ],
 )
