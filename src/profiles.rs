@@ -107,6 +107,47 @@ mod tests {
     }
 
     #[test]
+    fn flx4_decodes_library_navigation() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Browse encoder (CC 0x40 ch 6, centre-0 relative) → scroll delta.
+        let scroll = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 6,
+                controller: 0x40,
+                value: 0x01,
+            })
+            .unwrap();
+        assert_eq!(scroll.target, Target::LibraryScroll);
+        assert_eq!(scroll.value, ActionValue::Delta(1));
+        // Encoder press (note 0x41 ch 6) → open panel.
+        let open = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 6,
+                note: 0x41,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(open.target, Target::LibraryOpen);
+        // Load buttons (notes 0x46/0x47 ch 6) → load deck A / B.
+        let load_a = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 6,
+                note: 0x46,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(load_a.target, Target::LoadDeck(Deck::A));
+        let load_b = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 6,
+                note: 0x47,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(load_b.target, Target::LoadDeck(Deck::B));
+    }
+
+    #[test]
     fn flx4_feedback_renders_vu_and_play_leds() {
         use crate::FeedbackState;
         let p = builtin_for_port("DDJ-FLX4").unwrap();
