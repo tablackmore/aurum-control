@@ -125,6 +125,24 @@ pub enum Target {
     /// FX slot wet/dry mix.
     #[cfg(feature = "pro")]
     FxSlotMix(Deck, u8),
+    /// FX slot effect-type select (continuous; the host quantizes 0..1 to its effect list). `u8` = slot.
+    #[cfg(feature = "pro")]
+    FxSlotType(Deck, u8),
+    /// FX slot parameter knob (continuous; scaled into [min,max] per binding). `u8`s = slot, param index.
+    #[cfg(feature = "pro")]
+    FxSlotParam(Deck, u8, u8),
+    /// FX slot tempo-sync division (continuous; the host quantizes to the effect's divisions). `u8` = slot.
+    #[cfg(feature = "pro")]
+    FxSlotDivision(Deck, u8),
+    /// Performance FX: vinyl turntable brake/start (held = brake, release = spin back up).
+    #[cfg(feature = "pro")]
+    VinylBrake(Deck),
+    /// Performance FX: beat-repeat loop roll of `beats` length (held). Mirrors `BeatJump(Deck, f32)`.
+    #[cfg(feature = "pro")]
+    BeatRepeatRoll(Deck, f32),
+    /// Performance FX: noise/riser build-up sweep (one-shot trigger).
+    #[cfg(feature = "pro")]
+    Riser(Deck),
 }
 
 impl Target {
@@ -144,7 +162,13 @@ impl Target {
             #[cfg(feature = "pro")]
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) => Kind::Continuous,
             #[cfg(feature = "pro")]
+            FxSlotType(..) | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
+            #[cfg(feature = "pro")]
             DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) => Kind::Toggle,
+            #[cfg(feature = "pro")]
+            VinylBrake(..) | BeatRepeatRoll(..) => Kind::Toggle,
+            #[cfg(feature = "pro")]
+            Riser(..) => Kind::Trigger,
         }
     }
 
@@ -200,6 +224,18 @@ impl Target {
             FxSlotEnable(d, s) => format!("Deck {} · FX {} on", d.tag(), s + 1),
             #[cfg(feature = "pro")]
             FxSlotMix(d, s) => format!("Deck {} · FX {} mix", d.tag(), s + 1),
+            #[cfg(feature = "pro")]
+            FxSlotType(d, s) => format!("Deck {} · FX{} Type", d.tag(), s + 1),
+            #[cfg(feature = "pro")]
+            FxSlotParam(d, s, p) => format!("Deck {} · FX{} P{}", d.tag(), s + 1, p + 1),
+            #[cfg(feature = "pro")]
+            FxSlotDivision(d, s) => format!("Deck {} · FX{} Beat", d.tag(), s + 1),
+            #[cfg(feature = "pro")]
+            VinylBrake(d) => format!("Deck {} · Vinyl Brake", d.tag()),
+            #[cfg(feature = "pro")]
+            BeatRepeatRoll(d, beats) => format!("Deck {} · Beat Roll {}", d.tag(), beats),
+            #[cfg(feature = "pro")]
+            Riser(d) => format!("Deck {} · Riser", d.tag()),
         }
     }
 }
@@ -1047,5 +1083,28 @@ mod tests {
         );
         let tr = Options::for_target(Target::Transpose(Deck::A));
         assert_eq!((tr.min, tr.max), (-12.0, 12.0));
+    }
+
+    #[cfg(feature = "pro")]
+    #[test]
+    fn fx_perf_targets_kind_and_label() {
+        use crate::mapping::Deck;
+        // kind checks
+        assert_eq!(Target::FxSlotType(Deck::A, 0).kind(), Kind::Continuous);
+        assert_eq!(Target::FxSlotParam(Deck::A, 0, 0).kind(), Kind::Continuous);
+        assert_eq!(Target::FxSlotDivision(Deck::A, 0).kind(), Kind::Continuous);
+        assert_eq!(Target::VinylBrake(Deck::A).kind(), Kind::Toggle);
+        assert_eq!(Target::BeatRepeatRoll(Deck::A, 1.0).kind(), Kind::Toggle);
+        assert_eq!(Target::Riser(Deck::A).kind(), Kind::Trigger);
+        // label non-empty + contains deck tag
+        for d in [Deck::A, Deck::B] {
+            let tag = d.tag();
+            assert!(Target::FxSlotType(d, 0).label().contains(tag));
+            assert!(Target::FxSlotParam(d, 0, 0).label().contains(tag));
+            assert!(Target::FxSlotDivision(d, 0).label().contains(tag));
+            assert!(Target::VinylBrake(d).label().contains(tag));
+            assert!(Target::BeatRepeatRoll(d, 1.0).label().contains(tag));
+            assert!(Target::Riser(d).label().contains(tag));
+        }
     }
 }
