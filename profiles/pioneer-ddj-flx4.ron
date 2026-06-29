@@ -1,77 +1,84 @@
-// Pioneer DDJ-FLX4 profile (DRAFT — schema formalized in Phase 2's `profile` module).
-// Addresses captured live; see docs/devices/pioneer-ddj-flx4.md.
-// Deck 2 mirrors deck 1 with the MIDI channel bumped by one (0x90->0x91, 0xB0->0xB1,
-// pads 0x97->0x99); expressed here per-deck via `deck` + a channel table.
+// Pioneer DDJ-FLX4 — runtime input profile (flat schema, parses with `Profile`).
+//
+// Addresses captured live against real hardware; see docs/devices/pioneer-ddj-flx4.md
+// for the full protocol and the richer (deck-templated, pad-range, feedback) schema
+// planned for a later pass. This file is what ships and is decoded today: input
+// bindings only, both decks hand-expanded to concrete addresses.
+//
+// Deck channels: deck A = note 0x90 / CC 0xB0 / pads 0x97; deck B = 0x91 / 0xB1 / 0x99
+// (deck B mirrors A with the channel nibble +1). Browser/mixer = channel 6 (0xB6).
+//
+// v1 limitations (deferred): hi-res knobs resolve at 7-bit (MSB only); the channel
+// filter knob (Pro-only `Filter` target) and the browse/load + pad-mode/feedback
+// controls are not bound here yet.
 Profile(
     name: "Pioneer DDJ-FLX4",
-    // Auto-load when a connected input port name matches:
-    port_match: "(?i)ddj-flx4",
-
+    // Case-insensitive substring against the input port name.
+    port_match: "ddj-flx4",
     // REQUIRED enable handshake: quiets the idle flood and unlocks the LEDs.
-    init: [ Sysex([0xF0,0x00,0x40,0x05,0x00,0x00,0x04,0x05,0x00,0x50,0x02,0xF7]) ],
-
-    // status uses the deck's channel: deck 1 = 0x.0, deck 2 = 0x.1 (e.g. note 0x9{d}).
+    init: [[0xF0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x50, 0x02, 0xF7]],
     inputs: [
-        // ── transport ──
-        Bind(note: 0x0B, deck_status: 0x90, target: Play(Deck),        mode: Toggle),
-        Bind(note: 0x0C, deck_status: 0x90, target: CueMonitor(Deck),  mode: Trigger),  // TODO: transport "cue" vs headphone-cue
+        // ───────── Deck A (note 0x90, CC 0xB0, pads 0x97) ─────────
+        InputBinding(status: 0x90, data1: 0x0B, target: Play(A)),
+        InputBinding(status: 0x90, data1: 0x0C, target: CueMonitor(A)),
+        InputBinding(status: 0xB0, data1: 0x04, target: Trim(A),          hires: true),
+        InputBinding(status: 0xB0, data1: 0x07, target: EqHigh(A),        hires: true),
+        InputBinding(status: 0xB0, data1: 0x0B, target: EqMid(A),         hires: true),
+        InputBinding(status: 0xB0, data1: 0x0F, target: EqLow(A),         hires: true),
+        InputBinding(status: 0xB0, data1: 0x13, target: ChannelVolume(A), hires: true),
+        InputBinding(status: 0xB0, data1: 0x00, target: Tempo(A),         hires: true),
+        InputBinding(status: 0x90, data1: 0x36, target: JogTouch(A)),
+        InputBinding(status: 0xB0, data1: 0x22, target: JogScratch(A),    rel: Some(Centre64)),
+        InputBinding(status: 0xB0, data1: 0x21, target: JogBend(A),       rel: Some(Centre64)),
+        // hot-cue pads 0x00..0x07
+        InputBinding(status: 0x97, data1: 0x00, target: HotCue(A, 0)),
+        InputBinding(status: 0x97, data1: 0x01, target: HotCue(A, 1)),
+        InputBinding(status: 0x97, data1: 0x02, target: HotCue(A, 2)),
+        InputBinding(status: 0x97, data1: 0x03, target: HotCue(A, 3)),
+        InputBinding(status: 0x97, data1: 0x04, target: HotCue(A, 4)),
+        InputBinding(status: 0x97, data1: 0x05, target: HotCue(A, 5)),
+        InputBinding(status: 0x97, data1: 0x06, target: HotCue(A, 6)),
+        InputBinding(status: 0x97, data1: 0x07, target: HotCue(A, 7)),
+        // sampler-mode pads repurposed for stems: top row mute 0..3, bottom row solo 0..3
+        InputBinding(status: 0x97, data1: 0x30, target: StemMute(A, 0)),
+        InputBinding(status: 0x97, data1: 0x31, target: StemMute(A, 1)),
+        InputBinding(status: 0x97, data1: 0x32, target: StemMute(A, 2)),
+        InputBinding(status: 0x97, data1: 0x33, target: StemMute(A, 3)),
+        InputBinding(status: 0x97, data1: 0x34, target: StemSolo(A, 0)),
+        InputBinding(status: 0x97, data1: 0x35, target: StemSolo(A, 1)),
+        InputBinding(status: 0x97, data1: 0x36, target: StemSolo(A, 2)),
+        InputBinding(status: 0x97, data1: 0x37, target: StemSolo(A, 3)),
 
-        // ── mixer (14-bit hi-res: value = MSB<<7 | LSB, LSB on cc+0x20) ──
-        Bind(cc: 0x04, deck_status: 0xB0, target: Trim(Deck),          hires: true),
-        Bind(cc: 0x07, deck_status: 0xB0, target: EqHigh(Deck),        hires: true),
-        Bind(cc: 0x0B, deck_status: 0xB0, target: EqMid(Deck),         hires: true),
-        Bind(cc: 0x0F, deck_status: 0xB0, target: EqLow(Deck),         hires: true),
-        Bind(cc: 0x13, deck_status: 0xB0, target: ChannelVolume(Deck), hires: true),
-        Bind(cc: 0x00, deck_status: 0xB0, target: Tempo(Deck),         hires: true, deadband: 24),  // swallow LSB jitter
-        // mixer/browser channel (0xB6) — not per-deck:
-        Bind(cc: 0x17, channel: 6, deck_cc_offset: true, target: Filter(Deck), hires: true),  // Pro target; no-op in free
-        Bind(cc: 0x1F, channel: 6, target: Crossfade,                  hires: true),
+        // ───────── Deck B (note 0x91, CC 0xB1, pads 0x99) ─────────
+        InputBinding(status: 0x91, data1: 0x0B, target: Play(B)),
+        InputBinding(status: 0x91, data1: 0x0C, target: CueMonitor(B)),
+        InputBinding(status: 0xB1, data1: 0x04, target: Trim(B),          hires: true),
+        InputBinding(status: 0xB1, data1: 0x07, target: EqHigh(B),        hires: true),
+        InputBinding(status: 0xB1, data1: 0x0B, target: EqMid(B),         hires: true),
+        InputBinding(status: 0xB1, data1: 0x0F, target: EqLow(B),         hires: true),
+        InputBinding(status: 0xB1, data1: 0x13, target: ChannelVolume(B), hires: true),
+        InputBinding(status: 0xB1, data1: 0x00, target: Tempo(B),         hires: true),
+        InputBinding(status: 0x91, data1: 0x36, target: JogTouch(B)),
+        InputBinding(status: 0xB1, data1: 0x22, target: JogScratch(B),    rel: Some(Centre64)),
+        InputBinding(status: 0xB1, data1: 0x21, target: JogBend(B),       rel: Some(Centre64)),
+        InputBinding(status: 0x99, data1: 0x00, target: HotCue(B, 0)),
+        InputBinding(status: 0x99, data1: 0x01, target: HotCue(B, 1)),
+        InputBinding(status: 0x99, data1: 0x02, target: HotCue(B, 2)),
+        InputBinding(status: 0x99, data1: 0x03, target: HotCue(B, 3)),
+        InputBinding(status: 0x99, data1: 0x04, target: HotCue(B, 4)),
+        InputBinding(status: 0x99, data1: 0x05, target: HotCue(B, 5)),
+        InputBinding(status: 0x99, data1: 0x06, target: HotCue(B, 6)),
+        InputBinding(status: 0x99, data1: 0x07, target: HotCue(B, 7)),
+        InputBinding(status: 0x99, data1: 0x30, target: StemMute(B, 0)),
+        InputBinding(status: 0x99, data1: 0x31, target: StemMute(B, 1)),
+        InputBinding(status: 0x99, data1: 0x32, target: StemMute(B, 2)),
+        InputBinding(status: 0x99, data1: 0x33, target: StemMute(B, 3)),
+        InputBinding(status: 0x99, data1: 0x34, target: StemSolo(B, 0)),
+        InputBinding(status: 0x99, data1: 0x35, target: StemSolo(B, 1)),
+        InputBinding(status: 0x99, data1: 0x36, target: StemSolo(B, 2)),
+        InputBinding(status: 0x99, data1: 0x37, target: StemSolo(B, 3)),
 
-        // ── jog (relative, centre 64) ──
-        Bind(note: 0x36, deck_status: 0x90, target: JogTouch(Deck),    mode: Toggle),
-        Bind(cc: 0x22, deck_status: 0xB0, target: JogScratch(Deck),    rel: SignedCentre64),  // scrub when touched
-        Bind(cc: 0x21, deck_status: 0xB0, target: JogBend(Deck),       rel: SignedCentre64),  // pitch-bend nudge
-
-        // ── pads, HOT CUE mode: notes 0x00..0x07 on 0x97(d1)/0x99(d2) ──
-        PadRange(first_note: 0x00, deck_status: 0x97, target: HotCue(Deck), count: 8),
-
-        // ── pads, SAMPLER mode REPURPOSED for stems (AURUM is a stem app) ──
-        // The FLX4 sends 0x30..0x37 only while in Sampler mode, so binding that
-        // range here makes those pads control stems without any mode logic.
-        //   top row    0x30..0x33 -> mute stems 0..3 (drums, bass, vocals, melody)
-        //   bottom row 0x34..0x37 -> solo stems 0..3
-        PadRange(first_note: 0x30, deck_status: 0x97, target: StemMute(Deck), count: 4, mode: Toggle),
-        PadRange(first_note: 0x34, deck_status: 0x97, target: StemSolo(Deck), count: 4, mode: Toggle),
-
-        // ── pad-mode select (also LEDs) ──
-        Bind(note: 0x1B, deck_status: 0x90, target: PadMode(Deck, HotCue)),
-        Bind(note: 0x1E, deck_status: 0x90, target: PadMode(Deck, PadFx1)),
-        Bind(note: 0x20, deck_status: 0x90, target: PadMode(Deck, BeatJump)),
-        Bind(note: 0x22, deck_status: 0x90, target: PadMode(Deck, Sampler)),
-
-        // ── browser (channel 6 / 0xB6,0x96), relative centre 0 ──
-        Bind(cc: 0x40, channel: 6, target: LibraryScroll, rel: SignedCentre0),
-        Bind(note: 0x41, channel: 6, target: LibraryFocus,  mode: Trigger),
-        Bind(note: 0x46, channel: 6, target: LoadDeck(DeckA), mode: Trigger),
-        Bind(note: 0x47, channel: 6, target: LoadDeck(DeckB), mode: Trigger),
-    ],
-
-    // Engine state -> LED. Diffed; only changes are sent. Requires init first.
-    feedback: [
-        // VU meters live on channel 1 for BOTH decks (corrects the Mixxx B1 02 bug).
-        Vu(deck: DeckA, cc: 0x02, channel: 0),   // B0 02 vv, vv = level*127
-        Vu(deck: DeckB, cc: 0x03, channel: 0),   // B0 03 vv
-        // transport + mode LEDs: note-on 0x7F/0x00
-        Led(state: Playing(Deck),       note: 0x0B, deck_status: 0x90),
-        Led(state: CueArmed(Deck),      note: 0x0C, deck_status: 0x90),
-        Led(state: PadModeActive(Deck, HotCue),  note: 0x1B, deck_status: 0x90),
-        Led(state: PadModeActive(Deck, PadFx1),  note: 0x1E, deck_status: 0x90),
-        Led(state: PadModeActive(Deck, BeatJump),note: 0x20, deck_status: 0x90),
-        Led(state: PadModeActive(Deck, Sampler), note: 0x22, deck_status: 0x90),
-        // hot-cue pad RGB (colour palette TODO from Pioneer MIDI list)
-        PadLeds(deck_status: 0x97, first_note: 0x00, count: 8),
-        // sampler-mode stem pads: top row lit when that stem is MUTED,
-        // bottom row lit when SOLOED (colours per stem — drums/bass/vocals/melody).
-        StemPadLeds(deck_status: 0x97, mute_first: 0x30, solo_first: 0x34),
+        // ───────── shared (browser/mixer channel 6) ─────────
+        InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),
     ],
 )
