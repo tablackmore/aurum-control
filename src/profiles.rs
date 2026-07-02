@@ -188,6 +188,40 @@ mod tests {
         assert_eq!(solo.target, Target::StemSolo(Deck::A, 0));
     }
 
+    #[test]
+    fn flx4_hot_cue_pads_are_momentary_hold() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Hot-cue pad 1 press (note 0x00 on deck-A pad channel 0x97) → HotCueHold.
+        let press = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x00,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(press.target, Target::HotCueHold(Deck::A, 0));
+        assert_eq!(press.value, ActionValue::Absolute(1.0));
+        // Release (note-off) is carried through by the raw profile as 0.0 so the
+        // stateful decoder can emit the "return to ghost" edge.
+        let release = p
+            .decode(&MidiMessage::NoteOff {
+                channel: 7,
+                note: 0x00,
+            })
+            .unwrap();
+        assert_eq!(release.target, Target::HotCueHold(Deck::A, 0));
+        assert_eq!(release.value, ActionValue::Absolute(0.0));
+        // Deck B pad 8 (note 0x07 on pad channel 0x99).
+        let b = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 9,
+                note: 0x07,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(b.target, Target::HotCueHold(Deck::B, 7));
+    }
+
     /// Checks that the FLX4 profile carries the new FX/CFX bindings, confirming
     /// `every_builtin_parses` handles extended targets in the default feature config.
     #[test]
