@@ -163,8 +163,11 @@ impl Target {
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
             | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
             StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
-            | TriggerQuantize(_) | Slip(_) | CueMonitor(_) | JogTouch(_) => Kind::Toggle,
-            HotCueHold(..) => Kind::Momentary,
+            | TriggerQuantize(_) | Slip(_) | CueMonitor(_) => Kind::Toggle,
+            // JogTouch is momentary: the platter is "touched" while the top plate is
+            // held and released on note-off. As a Toggle the release edge was dropped,
+            // so `touched` stuck on and the deck stalled silent after a scratch.
+            HotCueHold(..) | JogTouch(_) => Kind::Momentary,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LibraryOpen
@@ -784,6 +787,15 @@ mod tests {
             Options::for_target(Target::HotCue(Deck::A, 0)).mode,
             Mode::Trigger
         );
+    }
+
+    #[test]
+    fn jog_touch_is_momentary() {
+        // JogTouch must emit on BOTH edges (press → 1.0, release → 0.0). As a Toggle
+        // the note-off release was dropped, so the platter stayed "touched" and the
+        // deck stalled silent after a scratch.
+        assert_eq!(Target::JogTouch(Deck::A).kind(), Kind::Momentary);
+        assert_eq!(Target::JogTouch(Deck::B).kind(), Kind::Momentary);
     }
 
     // ── absolute + invert + range ────────────────────────────────
