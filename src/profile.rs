@@ -205,24 +205,42 @@ impl ProfileDecoder {
         if kind == Kind::Continuous {
             return Some(raw); // knobs/faders/jog/encoders pass through
         }
-        // Toggle / Trigger: act on the press edge only.
+        // Toggle / Trigger act on the press edge only; Momentary acts on both.
         let addr = msg_addr(msg)?;
         let pressed = matches!(raw.value, ActionValue::Absolute(v) if v >= 0.5);
         let st = self.buttons.entry(addr).or_default();
         let rising = pressed && !st.down;
+        let falling = !pressed && st.down;
         st.down = pressed;
-        if !rising {
-            return None; // release or repeat — nothing to emit
-        }
-        let value = if kind == Kind::Toggle {
-            st.toggle_on = !st.toggle_on;
-            if st.toggle_on {
-                1.0
-            } else {
-                0.0
+        let value = match kind {
+            // Hold-to-play: emit on press (1.0) and release (0.0), ignore repeats.
+            Kind::Momentary => {
+                if rising {
+                    1.0
+                } else if falling {
+                    0.0
+                } else {
+                    return None;
+                }
             }
-        } else {
-            1.0 // Trigger
+            Kind::Toggle => {
+                if !rising {
+                    return None; // release or repeat — nothing to emit
+                }
+                st.toggle_on = !st.toggle_on;
+                if st.toggle_on {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            // Trigger (Continuous already returned above).
+            _ => {
+                if !rising {
+                    return None;
+                }
+                1.0
+            }
         };
         Some(ProfileAction {
             target: raw.target,
@@ -352,6 +370,7 @@ mod tests {
             inputs: [
                 InputBinding(status: 0x90, data1: 0x0B, target: Play(A)),       // Toggle
                 InputBinding(status: 0x97, data1: 0x00, target: HotCue(A, 0)),  // Trigger
+                InputBinding(status: 0x97, data1: 0x01, target: HotCueHold(A, 1)), // Momentary
                 InputBinding(status: 0xB0, data1: 0x07, target: EqHigh(A)),     // Continuous
                 InputBinding(status: 0xB0, data1: 0x22, target: Seek(A), rel: Some(Centre64)),
             ],
@@ -406,6 +425,21 @@ mod tests {
             d.decode(&note_on(0x97, 0x00)).unwrap().value,
             ActionValue::Absolute(1.0)
         );
+    }
+
+    #[test]
+    fn decoder_momentary_emits_on_press_and_release() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(DECODER_SAMPLE).unwrap());
+        // Press → 1.0 (play from cue).
+        let press = d.decode(&note_on(0x97, 0x01)).unwrap();
+        assert_eq!(press.target, Target::HotCueHold(Deck::A, 1));
+        assert_eq!(press.value, ActionValue::Absolute(1.0));
+        // Release → 0.0 (return to ghost) — unlike Trigger, which swallows it.
+        let release = d.decode(&note_off(0x97, 0x01)).unwrap();
+        assert_eq!(release.target, Target::HotCueHold(Deck::A, 1));
+        assert_eq!(release.value, ActionValue::Absolute(0.0));
+        // A repeated note-off (already up) emits nothing.
+        assert!(d.decode(&note_off(0x97, 0x01)).is_none());
     }
 
     #[test]

@@ -53,6 +53,9 @@ pub enum Kind {
     Toggle,
     /// Fires once on the press edge (hot cue, loop in/out, beat-jump).
     Trigger,
+    /// Acts on both edges: press → `1.0`, release → `0.0` (hold-to-play, e.g. a
+    /// slip hot cue that plays while held and returns on release).
+    Momentary,
 }
 
 /// A controllable parameter (the deck-selectable param space).
@@ -78,12 +81,22 @@ pub enum Target {
     Play(Deck),
     Sync(Deck),
     Keylock(Deck),
+    /// Set-time snap (grid-align cue/loop *positions* when placed).
     Quantize(Deck),
+    /// Trigger-time launch quantize (grid-lock cue *jumps*).
+    TriggerQuantize(Deck),
+    /// Slip mode (held loops/cues play momentarily, playback returns in place).
+    Slip(Deck),
     CueMonitor(Deck),
     LoopToggle(Deck),
     // ── Triggers ─────────────────────────────────────────────────
     HotCue(Deck, u8),
     HotCueClear(Deck, u8),
+    // ── Momentary ────────────────────────────────────────────────
+    /// Hold a hot cue: press plays from it, release returns to the ghost (slip).
+    /// With slip off the engine treats the press as a plain jump and the release
+    /// as a no-op, so it is safe to bind unconditionally.
+    HotCueHold(Deck, u8),
     LoopIn(Deck),
     LoopOut(Deck),
     LoopHalve(Deck),
@@ -150,7 +163,8 @@ impl Target {
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
             | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
             StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
-            | CueMonitor(_) | JogTouch(_) => Kind::Toggle,
+            | TriggerQuantize(_) | Slip(_) | CueMonitor(_) | JogTouch(_) => Kind::Toggle,
+            HotCueHold(..) => Kind::Momentary,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LibraryOpen
@@ -182,7 +196,9 @@ impl Target {
             Play(d) => format!("Deck {} · Play", d.tag()),
             Sync(d) => format!("Deck {} · Sync", d.tag()),
             Keylock(d) => format!("Deck {} · Keylock", d.tag()),
-            Quantize(d) => format!("Deck {} · Quantize", d.tag()),
+            Quantize(d) => format!("Deck {} · Snap", d.tag()),
+            TriggerQuantize(d) => format!("Deck {} · Quantize", d.tag()),
+            Slip(d) => format!("Deck {} · Slip", d.tag()),
             CueMonitor(d) => format!("Deck {} · Cue", d.tag()),
             LoopToggle(d) => format!("Deck {} · Loop", d.tag()),
             LoopIn(d) => format!("Deck {} · Loop in", d.tag()),
@@ -190,6 +206,7 @@ impl Target {
             LoopHalve(d) => format!("Deck {} · Loop ÷2", d.tag()),
             LoopDouble(d) => format!("Deck {} · Loop ×2", d.tag()),
             HotCue(d, s) => format!("Deck {} · Hot cue {}", d.tag(), s + 1),
+            HotCueHold(d, s) => format!("Deck {} · Hot cue {} (hold)", d.tag(), s + 1),
             HotCueClear(d, s) => format!("Deck {} · Clear cue {}", d.tag(), s + 1),
             BeatJump(d, b) => format!("Deck {} · Beat-jump {:+}", d.tag(), b),
             LoopSet(d, b) => format!("Deck {} · Loop {} beat", d.tag(), b),
@@ -285,6 +302,7 @@ impl Options {
             Kind::Continuous => Mode::Absolute,
             Kind::Toggle => Mode::Toggle,
             Kind::Trigger => Mode::Trigger,
+            Kind::Momentary => Mode::Momentary,
         };
         // A few targets aren't 0..1 parameters and want a custom default range.
         let (min, max) = match target {
@@ -1046,6 +1064,30 @@ mod tests {
         assert_eq!(
             Target::DrumPitchLock(Deck::A).label(),
             "Deck A · Drum pitch-lock"
+        );
+    }
+
+    #[test]
+    fn cue_slip_targets_classify_and_label() {
+        // Snap (set-time) and Quantize (trigger-time) are distinct toggles.
+        assert_eq!(Target::Quantize(Deck::A).kind(), Kind::Toggle);
+        assert_eq!(Target::TriggerQuantize(Deck::A).kind(), Kind::Toggle);
+        assert_eq!(Target::Slip(Deck::B).kind(), Kind::Toggle);
+        assert_eq!(Target::HotCueHold(Deck::A, 2).kind(), Kind::Momentary);
+        assert_eq!(Target::Quantize(Deck::A).label(), "Deck A · Snap");
+        assert_eq!(
+            Target::TriggerQuantize(Deck::A).label(),
+            "Deck A · Quantize"
+        );
+        assert_eq!(Target::Slip(Deck::B).label(), "Deck B · Slip");
+        assert_eq!(
+            Target::HotCueHold(Deck::A, 2).label(),
+            "Deck A · Hot cue 3 (hold)"
+        );
+        // A Momentary target defaults to Momentary mode in the learn-map path too.
+        assert_eq!(
+            Options::for_target(Target::HotCueHold(Deck::A, 0)).mode,
+            Mode::Momentary
         );
     }
 
