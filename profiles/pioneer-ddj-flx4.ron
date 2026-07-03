@@ -230,9 +230,10 @@ Profile(
         InputBinding(status: 0x94, data1: 0x6B, target: BeatFxTap),         // SHIFT+▶ TAP
         InputBinding(status: 0xB4, data1: 0x02, target: BeatFxLevel, hires: true), // LEVEL/DEPTH (LSB 0x22)
         // ON/OFF and RELEASE are addressed to the ASSIGNED channel (hardware-verified
-        // 2026-07-04): assign 1 and 1&2 send on 0x94, assign 2 sends on 0x95. Bind
-        // both channels; the LED echo stays on 0x94, which the unit honours at every
-        // switch position.
+        // 2026-07-04): assign 1 sends 0x94, assign 2 sends 0x95; at 1&2 ON/OFF sends
+        // 0x94 only but RELEASE sends BOTH channels in one press (the double dispatch
+        // is harmless — release() no-ops unless the FX is ON). Bind both channels;
+        // the LED echo stays on 0x94, which the unit honours at every switch position.
         InputBinding(status: 0x94, data1: 0x47, target: BeatFxOn),          // ON/OFF (assign 1, 1&2)
         InputBinding(status: 0x95, data1: 0x47, target: BeatFxOn),          // ON/OFF (assign 2)
         InputBinding(status: 0x94, data1: 0x43, target: BeatFxRelease),     // SHIFT+ON/OFF (assign 1, 1&2)
