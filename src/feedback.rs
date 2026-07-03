@@ -20,6 +20,12 @@ pub struct FeedbackState {
     pub master_level: f32,
     /// Per-deck headphone-cue (PFL) state (drives cue-button LEDs).
     pub deck_cued: [bool; 2],
+    /// Per-deck loop-active state (drives the IN/OUT button LEDs).
+    pub loop_active: [bool; 2],
+    /// Per-deck saved-loop slot occupancy (drives the Beat-Loop pad LEDs).
+    pub saved_loop_present: [[bool; 8]; 2],
+    /// Per-deck selected saved-loop slot (lit brighter), or `None`.
+    pub saved_loop_selected: [Option<u8>; 2],
 }
 
 /// Which engine value a feedback rule reflects.
@@ -33,6 +39,11 @@ pub enum FeedbackSource {
     DeckPlaying(Deck),
     /// Deck headphone-cue (PFL) — on → full (`0x7F`), off → zero (LED).
     DeckCued(Deck),
+    /// Deck loop-active — on → full (`0x7F`), off → zero (IN/OUT button LEDs).
+    LoopActive(Deck),
+    /// A saved-loop slot's LED (Beat-Loop pad): off when empty, dim when filled,
+    /// full when it is the selected slot.
+    SavedLoopSlot(Deck, u8),
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -78,6 +89,25 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                         0x00
                     }
                 }
+                FeedbackSource::LoopActive(d) => {
+                    if state.loop_active[idx(d)] {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                // Off (empty) / dim (filled) / full (selected). The dim + full
+                // levels drive the pad's RGB palette; tuned live on the unit.
+                FeedbackSource::SavedLoopSlot(d, s) => {
+                    let (i, slot) = (idx(d), s as usize);
+                    if state.saved_loop_selected[i] == Some(s) {
+                        0x7F
+                    } else if slot < 8 && state.saved_loop_present[i][slot] {
+                        0x20
+                    } else {
+                        0x00
+                    }
+                }
             };
             [r.status, r.data1, data2]
         })
@@ -111,6 +141,40 @@ impl FeedbackDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renders_loop_and_saved_loop_leds() {
+        let rules = vec![
+            FeedbackRule {
+                source: FeedbackSource::LoopActive(Deck::A),
+                status: 0x90,
+                data1: 0x10,
+            },
+            FeedbackRule {
+                source: FeedbackSource::SavedLoopSlot(Deck::A, 0),
+                status: 0x97,
+                data1: 0x60,
+            },
+            FeedbackRule {
+                source: FeedbackSource::SavedLoopSlot(Deck::A, 1),
+                status: 0x97,
+                data1: 0x61,
+            },
+        ];
+        let mut st = FeedbackState {
+            loop_active: [true, false],
+            ..Default::default()
+        };
+        st.saved_loop_present[0][0] = true; // slot 0 filled + selected → full
+        st.saved_loop_selected[0] = Some(0);
+        let frame = render(&rules, &st);
+        assert_eq!(frame[0], [0x90, 0x10, 0x7F]); // loop active → IN LED full
+        assert_eq!(frame[1], [0x97, 0x60, 0x7F]); // filled + selected → full
+        assert_eq!(frame[2], [0x97, 0x61, 0x00]); // empty → off
+                                                  // Filled but not selected → dim.
+        st.saved_loop_selected[0] = None;
+        assert_eq!(render(&rules, &st)[1], [0x97, 0x60, 0x20]);
+    }
 
     fn rules() -> Vec<FeedbackRule> {
         vec![

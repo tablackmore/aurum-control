@@ -212,6 +212,7 @@ mod tests {
             deck_playing: [true, false],
             master_level: 0.0,
             deck_cued: [true, false],
+            ..Default::default()
         };
         let frame = p.render_feedback(&state);
         // Deck A VU full (B0 02 7F), deck B VU silent (B1 02 00 — deck 2's meter
