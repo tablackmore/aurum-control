@@ -18,6 +18,8 @@ pub struct FeedbackState {
     pub deck_playing: [bool; 2],
     /// Master output level, `0..1`.
     pub master_level: f32,
+    /// Per-deck headphone-cue (PFL) state (drives cue-button LEDs).
+    pub deck_cued: [bool; 2],
 }
 
 /// Which engine value a feedback rule reflects.
@@ -29,6 +31,8 @@ pub enum FeedbackSource {
     MasterLevel,
     /// Deck transport — on → full (`0x7F`), off → zero (LED).
     DeckPlaying(Deck),
+    /// Deck headphone-cue (PFL) — on → full (`0x7F`), off → zero (LED).
+    DeckCued(Deck),
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -62,6 +66,13 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                 FeedbackSource::MasterLevel => unit_to_7bit(state.master_level),
                 FeedbackSource::DeckPlaying(d) => {
                     if state.deck_playing[idx(d)] {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::DeckCued(d) => {
+                    if state.deck_cued[idx(d)] {
                         0x7F
                     } else {
                         0x00
@@ -121,7 +132,7 @@ mod tests {
         let state = FeedbackState {
             deck_level: [1.0, 0.0],
             deck_playing: [true, false],
-            master_level: 0.0,
+            ..FeedbackState::default()
         };
         let frame = render(&rules(), &state);
         assert_eq!(frame[0], [0xB0, 0x02, 127]); // full level
@@ -129,11 +140,34 @@ mod tests {
     }
 
     #[test]
+    fn render_maps_cued_to_led() {
+        let rules = vec![
+            FeedbackRule {
+                source: FeedbackSource::DeckCued(Deck::A),
+                status: 0x90,
+                data1: 0x54,
+            },
+            FeedbackRule {
+                source: FeedbackSource::DeckCued(Deck::B),
+                status: 0x91,
+                data1: 0x54,
+            },
+        ];
+        let state = FeedbackState {
+            deck_cued: [true, false],
+            ..FeedbackState::default()
+        };
+        let frame = render(&rules, &state);
+        assert_eq!(frame[0], [0x90, 0x54, 0x7F]); // cued → LED on
+        assert_eq!(frame[1], [0x91, 0x54, 0x00]); // not cued → LED off
+    }
+
+    #[test]
     fn render_level_clamps_and_rounds_and_led_off() {
         let state = FeedbackState {
             deck_level: [0.5, 0.0],
             deck_playing: [false, false],
-            master_level: 0.0,
+            ..FeedbackState::default()
         };
         let frame = render(&rules(), &state);
         assert_eq!(frame[0], [0xB0, 0x02, 64]); // 0.5 → 64 (rounded)

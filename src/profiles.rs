@@ -186,14 +186,67 @@ mod tests {
             deck_level: [1.0, 0.0],
             deck_playing: [true, false],
             master_level: 0.0,
+            deck_cued: [true, false],
         };
         let frame = p.render_feedback(&state);
-        // Deck A VU full (B0 02 7F), deck B VU silent (B0 03 00),
-        // deck A play LED on (90 0B 7F), deck B play LED off (91 0B 00).
+        // Deck A VU full (B0 02 7F), deck B VU silent (B1 02 00 — deck 2's meter
+        // is on CHANNEL 2 like every other deck-2 control; the old B0 03 address
+        // left the right meter dark on real hardware), deck A play LED on
+        // (90 0B 7F), deck B play LED off (91 0B 00), headphone-cue LEDs
+        // (90/91 54) mirroring the cue-monitor state.
         assert_eq!(frame[0], [0xB0, 0x02, 127]);
-        assert_eq!(frame[1], [0xB0, 0x03, 0]);
+        assert_eq!(frame[1], [0xB1, 0x02, 0]);
         assert_eq!(frame[2], [0x90, 0x0B, 0x7F]);
         assert_eq!(frame[3], [0x91, 0x0B, 0x00]);
+        assert_eq!(frame[4], [0x90, 0x54, 0x7F]);
+        assert_eq!(frame[5], [0x91, 0x54, 0x00]);
+    }
+
+    #[test]
+    fn flx4_decodes_headphone_cue_buttons_and_mix_knob() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Headphone-cue (PFL) buttons: note 0x54 on the deck channel → CueMonitor.
+        let cue_a = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 0,
+                note: 0x54,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(cue_a.target, Target::CueMonitor(Deck::A));
+        let cue_b = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 1,
+                note: 0x54,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(cue_b.target, Target::CueMonitor(Deck::B));
+        // HEADPHONES MIX knob: CC 0x0C on the mixer channel → CueMix.
+        let mix = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 6,
+                controller: 0x0C,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(mix.target, Target::CueMix);
+        assert_eq!(mix.value, ActionValue::Absolute(1.0));
+    }
+
+    #[test]
+    fn flx4_decodes_master_level_rotary() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // MASTER LEVEL rotary: CC 0x08 (MSB) on the mixer channel, captured live.
+        let m = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 6,
+                controller: 0x08,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(m.target, Target::Master);
+        assert_eq!(m.value, ActionValue::Absolute(1.0));
     }
 
     #[test]
