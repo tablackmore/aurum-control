@@ -31,6 +31,8 @@ pub struct FeedbackState {
     pub saved_loop_present: [[bool; 8]; 2],
     /// Per-deck selected saved-loop slot (lit brighter), or `None`.
     pub saved_loop_selected: [Option<u8>; 2],
+    /// Beat FX ON/OFF engaged (drives the Beat FX ON/OFF button LED).
+    pub beat_fx_on: bool,
 }
 
 /// Which engine value a feedback rule reflects.
@@ -54,6 +56,8 @@ pub enum FeedbackSource {
     /// A saved-loop slot's LED (Beat-Loop pad): off when empty, dim when filled,
     /// full when it is the selected slot.
     SavedLoopSlot(Deck, u8),
+    /// Beat FX ON/OFF — on → full (0x7F), off → zero (LED).
+    BeatFxOn,
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -128,6 +132,13 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                         0x7F
                     } else if slot < 8 && state.saved_loop_present[i][slot] {
                         0x20
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::BeatFxOn => {
+                    if state.beat_fx_on {
+                        0x7F
                     } else {
                         0x00
                     }
@@ -302,5 +313,21 @@ mod tests {
         };
         let changed = diff.changed(&render(&rules(), &playing));
         assert_eq!(changed, vec![[0x90, 0x0B, 0x7F]]);
+    }
+
+    #[test]
+    fn beat_fx_on_led_renders_full_or_zero() {
+        let rules = [FeedbackRule {
+            source: FeedbackSource::BeatFxOn,
+            status: 0x94,
+            data1: 0x47,
+        }];
+        let on = FeedbackState {
+            beat_fx_on: true,
+            ..Default::default()
+        };
+        assert_eq!(render(&rules, &on), vec![[0x94, 0x47, 0x7F]]);
+        let off = FeedbackState::default(); // beat_fx_on defaults false
+        assert_eq!(render(&rules, &off), vec![[0x94, 0x47, 0x00]]);
     }
 }

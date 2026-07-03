@@ -25,7 +25,11 @@ pub fn builtin_for_port(port_name: &str) -> Option<Profile> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ActionValue, Deck, MidiMessage, Target};
+    use crate::{ActionValue, Deck, FeedbackSource, MidiMessage, Target};
+
+    fn flx4() -> crate::Profile {
+        builtin_for_port("DDJ-FLX4").unwrap()
+    }
 
     /// Schema-drift guard: every bundled profile must parse in this build's
     /// feature config. (Fails the moment a profile uses a target this build
@@ -511,5 +515,38 @@ mod tests {
             })
             .unwrap();
         assert_eq!(b.target, Target::PadFx(Deck::B, 10));
+    }
+
+    #[test]
+    fn flx4_beat_fx_section_is_bound() {
+        let p = flx4(); // reuse the existing profile-loading helper in this module
+                        // Hardware-captured 2026-07-03: assign flags, select, beat, auto/tap,
+                        // level (hires), on/off, release.
+        let find = |status: u8, data1: u8| {
+            p.inputs
+                .iter()
+                .find(|b| b.status == status && b.data1 == data1)
+                .unwrap_or_else(|| panic!("no binding for {status:#04x} {data1:#04x}"))
+        };
+        assert_eq!(find(0x94, 0x10).target, Target::BeatFxAssign(Deck::A));
+        assert_eq!(find(0x95, 0x11).target, Target::BeatFxAssign(Deck::B));
+        assert_eq!(find(0x94, 0x63).target, Target::BeatFxSelect(1));
+        assert_eq!(find(0x94, 0x64).target, Target::BeatFxSelect(-1));
+        assert_eq!(find(0x94, 0x4A).target, Target::BeatFxBeat(-1));
+        assert_eq!(find(0x94, 0x4B).target, Target::BeatFxBeat(1));
+        assert_eq!(find(0x94, 0x66).target, Target::BeatFxAuto);
+        assert_eq!(find(0x94, 0x6B).target, Target::BeatFxTap);
+        let level = find(0xB4, 0x02);
+        assert_eq!(level.target, Target::BeatFxLevel);
+        assert!(level.hires, "LEVEL/DEPTH is a 14-bit pair (LSB CC 0x22)");
+        assert_eq!(find(0x94, 0x47).target, Target::BeatFxOn);
+        assert_eq!(find(0x94, 0x43).target, Target::BeatFxRelease);
+        // ON/OFF LED echoes the input address.
+        assert!(p
+            .feedback
+            .iter()
+            .any(|r| matches!(r.source, FeedbackSource::BeatFxOn)
+                && r.status == 0x94
+                && r.data1 == 0x47));
     }
 }
