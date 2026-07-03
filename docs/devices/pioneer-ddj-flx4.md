@@ -33,6 +33,11 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | Control | Message | Encoding |
 |---|---|---|
 | Play / Cue | note `0x0B` / `0x0C` (`0x90`) | button |
+| Loop IN / OUT | note `0x10` / `0x11` (`0x90`) | button (shift: IN ADJ `0x4C` / OUT ADJ `0x4E`) |
+| 4 BEAT/EXIT | note `0x4D` (`0x90`) | button (shift: ACTIVE `0x50`) |
+| CUE/LOOP CALL ◄ / ► | note `0x51` / `0x53` (`0x90`) | button (shift: DEL `0x3E` / MEMORY `0x3D`) |
+| MASTER / BEAT SYNC | note `0x58` (`0x90`) | button (shift: TEMPO RANGE `0x60`) |
+| SHIFT | note `0x3F` (`0x90` left / `0x91` right) | modifier — hardware emits distinct notes for shifted buttons |
 | Hot-cue-mode pads 1–8 | notes `0x00–0x07` (status `0x97`; +shift `0x98`) | button |
 | Sampler-mode pads 1–8 | notes `0x30–0x37` (status `0x97`) | button — **repurposed**: top row `0x30–0x33` → stem **mute** 0–3, bottom `0x34–0x37` → stem **solo** 0–3 |
 | Pad-mode select: Hot Cue / Pad FX1 / Beat Jump / Sampler | notes `0x1B` / `0x1E` / `0x20` / `0x22` (`0x90`) | button (also LED, see below) |

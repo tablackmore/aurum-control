@@ -105,6 +105,19 @@ pub enum Target {
     BeatJump(Deck, f32),
     /// Set an active loop of `beats` length.
     LoopSet(Deck, f32),
+    /// One-button 4-beat auto-loop: sets a 4-beat loop at the playhead, or
+    /// exits if a loop is already active (FLX4 "4 BEAT/EXIT").
+    LoopFourOrExit(Deck),
+    /// Re-activate the last-used loop region (FLX4 shift "ACTIVE").
+    LoopReloop(Deck),
+    /// Save the current loop region into the deck's memory (FLX4 shift "MEMORY").
+    LoopSave(Deck),
+    /// Recall the previous saved loop (FLX4 "CUE/LOOP CALL ◄").
+    LoopCallPrev(Deck),
+    /// Recall the next saved loop (FLX4 "CUE/LOOP CALL ►").
+    LoopCallNext(Deck),
+    /// Delete the selected saved loop (FLX4 shift "DEL").
+    LoopDelete(Deck),
     // ── Jog (relative; driven by a device profile, not MIDI-learn) ───────────
     /// Jog wheel touched (on/off) — gates scrub vs let-it-play.
     JogTouch(Deck),
@@ -170,8 +183,9 @@ impl Target {
             HotCueHold(..) | JogTouch(_) => Kind::Momentary,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
-            | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LibraryOpen
-            | LoadDeck(_) => Kind::Trigger,
+            | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LoopFourOrExit(_)
+            | LoopReloop(_) | LoopSave(_) | LoopCallPrev(_) | LoopCallNext(_) | LoopDelete(_)
+            | LibraryOpen | LoadDeck(_) => Kind::Trigger,
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
             | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
@@ -222,6 +236,12 @@ impl Target {
             JogBend(d) => format!("Deck {} · Jog bend", d.tag()),
             LibraryScroll => "Library · Scroll".into(),
             LibraryOpen => "Library · Open".into(),
+            LoopFourOrExit(d) => format!("Deck {} · 4-beat / exit", d.tag()),
+            LoopReloop(d) => format!("Deck {} · Reloop", d.tag()),
+            LoopSave(d) => format!("Deck {} · Save loop", d.tag()),
+            LoopCallPrev(d) => format!("Deck {} · Call prev loop", d.tag()),
+            LoopCallNext(d) => format!("Deck {} · Call next loop", d.tag()),
+            LoopDelete(d) => format!("Deck {} · Delete loop", d.tag()),
             LoadDeck(d) => format!("Library · Load deck {}", d.tag()),
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
             Filter(d) => format!("Deck {} · Filter", d.tag()),
@@ -774,6 +794,35 @@ mod tests {
             note: 36,
         };
         assert_eq!(note.to_string(), "Note 36 · ch 3");
+    }
+
+    #[test]
+    fn loop_four_or_exit_and_reloop_are_triggers_with_labels() {
+        assert_eq!(Target::LoopFourOrExit(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopReloop(Deck::B).kind(), Kind::Trigger);
+        assert_eq!(
+            Target::LoopFourOrExit(Deck::A).label(),
+            "Deck A · 4-beat / exit"
+        );
+        assert_eq!(Target::LoopReloop(Deck::B).label(), "Deck B · Reloop");
+    }
+
+    #[test]
+    fn saved_loop_targets_are_triggers_with_labels() {
+        assert_eq!(Target::LoopSave(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopCallPrev(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopCallNext(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopDelete(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopSave(Deck::A).label(), "Deck A · Save loop");
+        assert_eq!(
+            Target::LoopCallPrev(Deck::B).label(),
+            "Deck B · Call prev loop"
+        );
+        assert_eq!(
+            Target::LoopCallNext(Deck::B).label(),
+            "Deck B · Call next loop"
+        );
+        assert_eq!(Target::LoopDelete(Deck::A).label(), "Deck A · Delete loop");
     }
 
     #[test]

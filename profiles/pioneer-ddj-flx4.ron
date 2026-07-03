@@ -32,6 +32,18 @@ Profile(
         InputBinding(status: 0x90, data1: 0x36, target: JogTouch(A)),
         InputBinding(status: 0xB0, data1: 0x22, target: JogScratch(A),    rel: Some(Centre64)),
         InputBinding(status: 0xB0, data1: 0x21, target: JogBend(A),       rel: Some(Centre64)),
+        // Loop / beat-sync cluster — notes captured live off the unit 2026-07-03.
+        InputBinding(status: 0x90, data1: 0x10, target: LoopIn(A)),           // IN
+        InputBinding(status: 0x90, data1: 0x11, target: LoopOut(A)),          // OUT
+        InputBinding(status: 0x90, data1: 0x4D, target: LoopFourOrExit(A)),   // 4 BEAT/EXIT
+        InputBinding(status: 0x90, data1: 0x51, target: LoopCallPrev(A)),     // CUE/LOOP CALL <
+        InputBinding(status: 0x90, data1: 0x53, target: LoopCallNext(A)),     // CUE/LOOP CALL >
+        InputBinding(status: 0x90, data1: 0x58, target: Sync(A)),             // BEAT SYNC
+        InputBinding(status: 0x90, data1: 0x50, target: LoopReloop(A)),       // shift: ACTIVE
+        InputBinding(status: 0x90, data1: 0x3E, target: LoopDelete(A)),       // shift: DEL
+        InputBinding(status: 0x90, data1: 0x3D, target: LoopSave(A)),         // shift: MEMORY
+        // Not yet bound (need engine work): IN ADJ 0x4C, OUT ADJ 0x4E (loop-point
+        // nudge), TEMPO RANGE 0x60 (frontend cycle), MASTER long-press on SYNC.
         // hot-cue pads 0x00..0x07 — momentary (hold-to-play): press jumps to the cue,
         // release returns to the slip ghost when slip is on (plain jump when off)
         InputBinding(status: 0x97, data1: 0x00, target: HotCueHold(A, 0)),
@@ -74,6 +86,16 @@ Profile(
         InputBinding(status: 0x91, data1: 0x36, target: JogTouch(B)),
         InputBinding(status: 0xB1, data1: 0x22, target: JogScratch(B),    rel: Some(Centre64)),
         InputBinding(status: 0xB1, data1: 0x21, target: JogBend(B),       rel: Some(Centre64)),
+        // Loop / beat-sync cluster — notes captured live off the unit 2026-07-03.
+        InputBinding(status: 0x91, data1: 0x10, target: LoopIn(B)),           // IN
+        InputBinding(status: 0x91, data1: 0x11, target: LoopOut(B)),          // OUT
+        InputBinding(status: 0x91, data1: 0x4D, target: LoopFourOrExit(B)),   // 4 BEAT/EXIT
+        InputBinding(status: 0x91, data1: 0x51, target: LoopCallPrev(B)),     // CUE/LOOP CALL <
+        InputBinding(status: 0x91, data1: 0x53, target: LoopCallNext(B)),     // CUE/LOOP CALL >
+        InputBinding(status: 0x91, data1: 0x58, target: Sync(B)),             // BEAT SYNC
+        InputBinding(status: 0x91, data1: 0x50, target: LoopReloop(B)),       // shift: ACTIVE
+        InputBinding(status: 0x91, data1: 0x3E, target: LoopDelete(B)),       // shift: DEL
+        InputBinding(status: 0x91, data1: 0x3D, target: LoopSave(B)),         // shift: MEMORY
         InputBinding(status: 0x99, data1: 0x00, target: HotCueHold(B, 0)),
         InputBinding(status: 0x99, data1: 0x01, target: HotCueHold(B, 1)),
         InputBinding(status: 0x99, data1: 0x02, target: HotCueHold(B, 2)),
