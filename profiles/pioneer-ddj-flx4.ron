@@ -41,11 +41,12 @@ Profile(
         InputBinding(status: 0x90, data1: 0x51, target: LoopCallPrev(A)),     // CUE/LOOP CALL <
         InputBinding(status: 0x90, data1: 0x53, target: LoopCallNext(A)),     // CUE/LOOP CALL >
         InputBinding(status: 0x90, data1: 0x58, target: Sync(A)),             // BEAT SYNC
+        InputBinding(status: 0x90, data1: 0x60, target: TempoRange(A)),       // shift: TEMPO RANGE
         InputBinding(status: 0x90, data1: 0x50, target: LoopReloop(A)),       // shift: ACTIVE
         InputBinding(status: 0x90, data1: 0x3E, target: LoopDelete(A)),       // shift: DEL
         InputBinding(status: 0x90, data1: 0x3D, target: LoopSave(A)),         // shift: MEMORY
         // Not yet bound (need engine work): IN ADJ 0x4C, OUT ADJ 0x4E (loop-point
-        // nudge), TEMPO RANGE 0x60 (frontend cycle), MASTER long-press on SYNC.
+        // nudge), MASTER long-press on SYNC.
         // hot-cue pads 0x00..0x07 — momentary (hold-to-play): press jumps to the cue,
         // release returns to the slip ghost when slip is on (plain jump when off)
         InputBinding(status: 0x97, data1: 0x00, target: HotCueHold(A, 0)),
@@ -125,6 +126,7 @@ Profile(
         InputBinding(status: 0x91, data1: 0x51, target: LoopCallPrev(B)),     // CUE/LOOP CALL <
         InputBinding(status: 0x91, data1: 0x53, target: LoopCallNext(B)),     // CUE/LOOP CALL >
         InputBinding(status: 0x91, data1: 0x58, target: Sync(B)),             // BEAT SYNC
+        InputBinding(status: 0x91, data1: 0x60, target: TempoRange(B)),       // shift: TEMPO RANGE
         InputBinding(status: 0x91, data1: 0x50, target: LoopReloop(B)),       // shift: ACTIVE
         InputBinding(status: 0x91, data1: 0x3E, target: LoopDelete(B)),       // shift: DEL
         InputBinding(status: 0x91, data1: 0x3D, target: LoopSave(B)),         // shift: MEMORY
@@ -221,6 +223,11 @@ Profile(
         FeedbackRule(source: DeckCued(A),    status: 0x90, data1: 0x54),
         FeedbackRule(source: DeckCued(B),    status: 0x91, data1: 0x54),
         FeedbackRule(source: MasterCued,     status: 0x96, data1: 0x63),
+        // BEAT SYNC button LEDs — lit while the deck is the sync follower.
+        // LED note assumed = input note (0x58, the PLAY/CUE pattern); verify on
+        // the unit before trusting (like the VU-channel correction above).
+        FeedbackRule(source: DeckSyncing(A), status: 0x90, data1: 0x58),
+        FeedbackRule(source: DeckSyncing(B), status: 0x91, data1: 0x58),
         // Loop IN/OUT button LEDs — lit while a loop is active (both decks).
         FeedbackRule(source: LoopActive(A),  status: 0x90, data1: 0x10),
         FeedbackRule(source: LoopActive(A),  status: 0x90, data1: 0x11),

@@ -24,6 +24,9 @@ pub struct FeedbackState {
     pub master_cued: bool,
     /// Per-deck loop-active state (drives the IN/OUT button LEDs).
     pub loop_active: [bool; 2],
+    /// Per-deck beat-sync engaged state — true on the FOLLOWER deck only
+    /// (drives the BEAT SYNC button LEDs).
+    pub deck_syncing: [bool; 2],
     /// Per-deck saved-loop slot occupancy (drives the Beat-Loop pad LEDs).
     pub saved_loop_present: [[bool; 8]; 2],
     /// Per-deck selected saved-loop slot (lit brighter), or `None`.
@@ -45,6 +48,9 @@ pub enum FeedbackSource {
     MasterCued,
     /// Deck loop-active — on → full (`0x7F`), off → zero (IN/OUT button LEDs).
     LoopActive(Deck),
+    /// Deck beat-sync engaged (the deck is the follower) — on → full (`0x7F`),
+    /// off → zero (BEAT SYNC button LED).
+    DeckSyncing(Deck),
     /// A saved-loop slot's LED (Beat-Loop pad): off when empty, dim when filled,
     /// full when it is the selected slot.
     SavedLoopSlot(Deck, u8),
@@ -102,6 +108,13 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                 }
                 FeedbackSource::LoopActive(d) => {
                     if state.loop_active[idx(d)] {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::DeckSyncing(d) => {
+                    if state.deck_syncing[idx(d)] {
                         0x7F
                     } else {
                         0x00
@@ -185,6 +198,30 @@ mod tests {
                                                   // Filled but not selected → dim.
         st.saved_loop_selected[0] = None;
         assert_eq!(render(&rules, &st)[1], [0x97, 0x60, 0x20]);
+    }
+
+    #[test]
+    fn renders_sync_leds_per_deck() {
+        let rules = vec![
+            FeedbackRule {
+                source: FeedbackSource::DeckSyncing(Deck::A),
+                status: 0x90,
+                data1: 0x58,
+            },
+            FeedbackRule {
+                source: FeedbackSource::DeckSyncing(Deck::B),
+                status: 0x91,
+                data1: 0x58,
+            },
+        ];
+        // A is the follower → its LED full; free deck B stays dark.
+        let state = FeedbackState {
+            deck_syncing: [true, false],
+            ..FeedbackState::default()
+        };
+        let frame = render(&rules, &state);
+        assert_eq!(frame[0], [0x90, 0x58, 0x7F]);
+        assert_eq!(frame[1], [0x91, 0x58, 0x00]);
     }
 
     fn rules() -> Vec<FeedbackRule> {

@@ -79,6 +79,11 @@ pub enum Target {
     StemMute(Deck, u8),
     StemSolo(Deck, u8),
     Play(Deck),
+    /// Beat-sync toggle for this deck (the pressed deck becomes the single
+    /// follower). Fires per press like a trigger: the HOST flips real engine
+    /// state, because sync also changes from the UI, follower swaps and
+    /// auto-mix — a mapping-side latch would go stale (same lesson as
+    /// `LoopToggle`).
     Sync(Deck),
     Keylock(Deck),
     /// Set-time snap (grid-align cue/loop *positions* when placed).
@@ -176,6 +181,10 @@ pub enum Target {
     /// Momentary pad FX (held): `u8` = the host's pad-FX preset id (the
     /// audio-core `pad_fx::PRESETS` index — a cross-repo contract).
     PadFx(Deck, u8),
+    /// Cycle the tempo-fader range (FLX4 shift + BEAT SYNC "TEMPO RANGE").
+    /// UI-bound like the library targets: the range ladder is a frontend
+    /// setting, so the host routes this to the UI, not the engine.
+    TempoRange(Deck),
 }
 
 impl Target {
@@ -186,17 +195,21 @@ impl Target {
             StemVolume(..) | EqLow(_) | EqMid(_) | EqHigh(_) | Pan(_) | ChannelVolume(_)
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
             | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
-            StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
+            StemMute(..) | StemSolo(..) | Play(_) | Keylock(_) | Quantize(_)
             | TriggerQuantize(_) | Slip(_) | CueMonitor(_) | CueMaster => Kind::Toggle,
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
             HotCueHold(..) | JogTouch(_) | PadFx(..) => Kind::Momentary,
-            // LoopToggle flips engine-side state, so it fires per press like a trigger.
-            LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
+            // LoopToggle/Sync flip engine-side state, so they fire per press like
+            // a trigger — a mapping-side latch would go stale when the state
+            // changes from the UI (or a sync follower swap / auto-mix).
+            LoopToggle(_) | Sync(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LoopFourOrExit(_)
             | LoopReloop(_) | LoopSave(_) | LoopCallPrev(_) | LoopCallNext(_) | LoopDelete(_)
-            | LoopSlot(..) | LoopSlotDelete(..) | LibraryOpen | LoadDeck(_) => Kind::Trigger,
+            | LoopSlot(..) | LoopSlotDelete(..) | LibraryOpen | LoadDeck(_) | TempoRange(_) => {
+                Kind::Trigger
+            }
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
             | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
@@ -223,6 +236,7 @@ impl Target {
             Seek(d) => format!("Deck {} · Seek", d.tag()),
             Play(d) => format!("Deck {} · Play", d.tag()),
             Sync(d) => format!("Deck {} · Sync", d.tag()),
+            TempoRange(d) => format!("Deck {} · Tempo range", d.tag()),
             Keylock(d) => format!("Deck {} · Keylock", d.tag()),
             Quantize(d) => format!("Deck {} · Snap", d.tag()),
             TriggerQuantize(d) => format!("Deck {} · Quantize", d.tag()),
