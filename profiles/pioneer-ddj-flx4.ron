@@ -72,9 +72,19 @@ Profile(
         InputBinding(status: 0x97, data1: 0x12, target: BeatRepeatRoll(A, 0.25)), // 1/16 roll
         InputBinding(status: 0x97, data1: 0x13, target: VinylBrake(A)),           // brake (hold)
         InputBinding(status: 0x97, data1: 0x14, target: Riser(A)),                // riser (trigger)
-        InputBinding(status: 0x97, data1: 0x15, target: FxSlotEnable(A, 0)),      // FX slot 1
-        InputBinding(status: 0x97, data1: 0x16, target: FxSlotEnable(A, 1)),      // FX slot 2
-        InputBinding(status: 0x97, data1: 0x17, target: FxSlotEnable(A, 2)),      // FX slot 3
+        InputBinding(status: 0x97, data1: 0x15, target: PadFx(A, 0)),             // Trans 1/8 (hold)
+        InputBinding(status: 0x97, data1: 0x16, target: PadFx(A, 3)),             // Echo Out (hold)
+        InputBinding(status: 0x97, data1: 0x17, target: PadFx(A, 4)),             // Space (hold)
+        // Pad FX 2 mode pads 0x18..0x1F (INFERRED — Pad FX 1 base + 8, the standard
+        // Pioneer second-page offset; MUST be verified against hardware).
+        InputBinding(status: 0x97, data1: 0x18, target: PadFx(A, 5)),             // Crush (hold)
+        InputBinding(status: 0x97, data1: 0x19, target: PadFx(A, 6)),             // Fuzz (hold)
+        InputBinding(status: 0x97, data1: 0x1A, target: PadFx(A, 7)),             // Jet (hold)
+        InputBinding(status: 0x97, data1: 0x1B, target: PadFx(A, 8)),             // Phase (hold)
+        InputBinding(status: 0x97, data1: 0x1C, target: PadFx(A, 1)),             // Trans 1/4 (hold)
+        InputBinding(status: 0x97, data1: 0x1D, target: PadFx(A, 2)),             // Trans 1/16 (hold)
+        InputBinding(status: 0x97, data1: 0x1E, target: PadFx(A, 9)),             // Sub Octave (hold)
+        InputBinding(status: 0x97, data1: 0x1F, target: PadFx(A, 10)),            // Warble (hold)
         // Beat-Loop pad mode (SHIFT+BEAT JUMP) — 8 pads → saved-loop slots;
         // SHIFT+pad (channel 0x98) → delete. Captured live 2026-07-03.
         InputBinding(status: 0x97, data1: 0x60, target: LoopSlot(A, 0)),
@@ -141,9 +151,19 @@ Profile(
         InputBinding(status: 0x99, data1: 0x12, target: BeatRepeatRoll(B, 0.25)), // 1/16 roll
         InputBinding(status: 0x99, data1: 0x13, target: VinylBrake(B)),           // brake (hold)
         InputBinding(status: 0x99, data1: 0x14, target: Riser(B)),                // riser (trigger)
-        InputBinding(status: 0x99, data1: 0x15, target: FxSlotEnable(B, 0)),      // FX slot 1
-        InputBinding(status: 0x99, data1: 0x16, target: FxSlotEnable(B, 1)),      // FX slot 2
-        InputBinding(status: 0x99, data1: 0x17, target: FxSlotEnable(B, 2)),      // FX slot 3
+        InputBinding(status: 0x99, data1: 0x15, target: PadFx(B, 0)),             // Trans 1/8 (hold)
+        InputBinding(status: 0x99, data1: 0x16, target: PadFx(B, 3)),             // Echo Out (hold)
+        InputBinding(status: 0x99, data1: 0x17, target: PadFx(B, 4)),             // Space (hold)
+        // Pad FX 2 mode pads 0x18..0x1F (INFERRED — Pad FX 1 base + 8, the standard
+        // Pioneer second-page offset; MUST be verified against hardware).
+        InputBinding(status: 0x99, data1: 0x18, target: PadFx(B, 5)),             // Crush (hold)
+        InputBinding(status: 0x99, data1: 0x19, target: PadFx(B, 6)),             // Fuzz (hold)
+        InputBinding(status: 0x99, data1: 0x1A, target: PadFx(B, 7)),             // Jet (hold)
+        InputBinding(status: 0x99, data1: 0x1B, target: PadFx(B, 8)),             // Phase (hold)
+        InputBinding(status: 0x99, data1: 0x1C, target: PadFx(B, 1)),             // Trans 1/4 (hold)
+        InputBinding(status: 0x99, data1: 0x1D, target: PadFx(B, 2)),             // Trans 1/16 (hold)
+        InputBinding(status: 0x99, data1: 0x1E, target: PadFx(B, 9)),             // Sub Octave (hold)
+        InputBinding(status: 0x99, data1: 0x1F, target: PadFx(B, 10)),            // Warble (hold)
         // Beat-Loop pad mode — 8 pads → saved-loop slots; SHIFT+pad (0x9A) → delete.
         InputBinding(status: 0x99, data1: 0x60, target: LoopSlot(B, 0)),
         InputBinding(status: 0x99, data1: 0x61, target: LoopSlot(B, 1)),

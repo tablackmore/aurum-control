@@ -170,6 +170,9 @@ pub enum Target {
     BeatRepeatRoll(Deck, f32),
     /// Performance FX: noise/riser build-up sweep (one-shot trigger).
     Riser(Deck),
+    /// Momentary pad FX (held): `u8` = the host's pad-FX preset id (the
+    /// audio-core `pad_fx::PRESETS` index — a cross-repo contract).
+    PadFx(Deck, u8),
 }
 
 impl Target {
@@ -185,7 +188,7 @@ impl Target {
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
-            HotCueHold(..) | JogTouch(_) => Kind::Momentary,
+            HotCueHold(..) | JogTouch(_) | PadFx(..) => Kind::Momentary,
             // LoopToggle flips engine-side state, so it fires per press like a trigger.
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LoopFourOrExit(_)
@@ -264,6 +267,7 @@ impl Target {
             VinylBrake(d) => format!("Deck {} · Vinyl Brake", d.tag()),
             BeatRepeatRoll(d, beats) => format!("Deck {} · Beat Roll {}", d.tag(), beats),
             Riser(d) => format!("Deck {} · Riser", d.tag()),
+            PadFx(d, i) => format!("Deck {} · Pad FX {}", d.tag(), u16::from(i) + 1),
         }
     }
 }
@@ -1193,6 +1197,7 @@ mod tests {
         assert_eq!(Target::VinylBrake(Deck::A).kind(), Kind::Toggle);
         assert_eq!(Target::BeatRepeatRoll(Deck::A, 1.0).kind(), Kind::Toggle);
         assert_eq!(Target::Riser(Deck::A).kind(), Kind::Trigger);
+        assert_eq!(Target::PadFx(Deck::A, 3).kind(), Kind::Momentary);
         // label non-empty + contains deck tag
         for d in [Deck::A, Deck::B] {
             let tag = d.tag();
@@ -1202,6 +1207,7 @@ mod tests {
             assert!(Target::VinylBrake(d).label().contains(tag));
             assert!(Target::BeatRepeatRoll(d, 1.0).label().contains(tag));
             assert!(Target::Riser(d).label().contains(tag));
+            assert!(Target::PadFx(d, 0).label().contains(tag));
         }
     }
 }

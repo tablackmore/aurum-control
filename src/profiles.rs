@@ -372,14 +372,47 @@ mod tests {
             })
             .unwrap();
         assert_eq!(riser.target, Target::Riser(Deck::A));
-        // Pad 0x15 deck A → FxSlotEnable(A, 0)
-        let fx1 = p
+        // Pad 0x15 deck A → PadFx(A, 0) (Trans 1/8)
+        let trans = p
             .decode(&MidiMessage::NoteOn {
                 channel: 7,
                 note: 0x15,
                 velocity: 127,
             })
             .unwrap();
-        assert_eq!(fx1.target, Target::FxSlotEnable(Deck::A, 0));
+        assert_eq!(trans.target, Target::PadFx(Deck::A, 0));
+    }
+
+    #[test]
+    fn flx4_pad_fx2_pads_are_momentary_hold() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Pad FX 2 pad 1 (note 0x18, deck-A pad channel 0x97) → PadFx(A, 5) Crush.
+        let press = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 7,
+                note: 0x18,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(press.target, Target::PadFx(Deck::A, 5));
+        assert_eq!(press.value, ActionValue::Absolute(1.0));
+        // Release must carry through as 0.0: pad FX are hold-to-engage.
+        let release = p
+            .decode(&MidiMessage::NoteOff {
+                channel: 7,
+                note: 0x18,
+            })
+            .unwrap();
+        assert_eq!(release.target, Target::PadFx(Deck::A, 5));
+        assert_eq!(release.value, ActionValue::Absolute(0.0));
+        // Deck B last pad (note 0x1F on pad channel 0x99) → PadFx(B, 10) Warble.
+        let b = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 9,
+                note: 0x1F,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(b.target, Target::PadFx(Deck::B, 10));
     }
 }
