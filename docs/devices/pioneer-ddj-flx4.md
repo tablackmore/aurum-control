@@ -36,7 +36,7 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | Loop IN / OUT | note `0x10` / `0x11` (`0x90`) | button (shift: IN ADJ `0x4C` / OUT ADJ `0x4E`) |
 | 4 BEAT/EXIT | note `0x4D` (`0x90`) | button (shift: ACTIVE `0x50`) |
 | CUE/LOOP CALL ◄ / ► | note `0x51` / `0x53` (`0x90`) | button (shift: DEL `0x3E` / MEMORY `0x3D`) |
-| MASTER / BEAT SYNC | note `0x58` (`0x90`) | button (shift: TEMPO RANGE `0x60`) |
+| MASTER / BEAT SYNC | note `0x58` (`0x90`) | button → `Sync` (fires per press; the app flips engine state). Shift: TEMPO RANGE `0x60` → `TempoRange` (frontend range-ladder cycle) |
 | Beat-Loop pads 1–8 | notes `0x60–0x67` (status `0x97` A / `0x99` B; +shift `0x98`/`0x9A`) | button — saved-loop slots (SHIFT+pad = delete) |
 | Beat-Loop mode-select (SHIFT+BEAT JUMP) | note `0x6D` (`0x90`/`0x91`) | button + LED |
 | SHIFT | note `0x3F` (`0x90` left / `0x91` right) | modifier — hardware emits distinct notes for shifted buttons |
@@ -74,6 +74,7 @@ browse encoder at 0. The profile must declare per-control encoding.
 | Headphone-cue (PFL) LED | note `0x54` (`0x90` deck 1, `0x91` deck 2) |
 | Master-cue LED | note `0x63` (`0x96`) |
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
+| BEAT SYNC LED | note `0x58` (`0x90` deck 1, `0x91` deck 2) — assumed LED = input note (PLAY/CUE pattern); **not yet hardware-verified** |
 | Pad-mode LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler) | notes `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90`/`0x91`) |
 | Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2); colour via velocity palette (TODO from Pioneer list) |
 

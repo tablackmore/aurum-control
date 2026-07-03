@@ -138,6 +138,68 @@ mod tests {
     }
 
     #[test]
+    fn flx4_beat_sync_fires_every_press_like_a_trigger() {
+        use crate::ProfileDecoder;
+        // BEAT SYNC flips ENGINE-side state (the app resolves on/off from
+        // engine truth), so the decoder must fire 1.0 on EVERY press — a
+        // mapping-side toggle latch would go stale when sync changes from the
+        // UI, a follower swap, or auto-mix.
+        let mut d = ProfileDecoder::new(builtin_for_port("DDJ-FLX4").unwrap());
+        let press = MidiMessage::NoteOn {
+            channel: 0,
+            note: 0x58,
+            velocity: 127,
+        };
+        let release = MidiMessage::NoteOff {
+            channel: 0,
+            note: 0x58,
+        };
+        let a1 = d.decode(&press).expect("first press fires");
+        assert_eq!(a1.target, Target::Sync(Deck::A));
+        assert_eq!(a1.value, ActionValue::Absolute(1.0));
+        assert!(d.decode(&release).is_none(), "release is silent");
+        let a2 = d.decode(&press).expect("second press fires again");
+        assert_eq!(
+            a2.value,
+            ActionValue::Absolute(1.0),
+            "every press is a 1.0 trigger, not a latched 0.0"
+        );
+    }
+
+    #[test]
+    fn flx4_decodes_shift_sync_as_tempo_range() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        for (channel, want) in [
+            (0u8, Target::TempoRange(Deck::A)),
+            (1, Target::TempoRange(Deck::B)),
+        ] {
+            let a = p
+                .decode(&MidiMessage::NoteOn {
+                    channel,
+                    note: 0x60,
+                    velocity: 127,
+                })
+                .unwrap_or_else(|| panic!("no binding for ch {channel} note 0x60"));
+            assert_eq!(a.target, want);
+        }
+    }
+
+    #[test]
+    fn flx4_feedback_renders_sync_leds() {
+        use crate::FeedbackState;
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let state = FeedbackState {
+            deck_syncing: [true, false],
+            ..Default::default()
+        };
+        let frame = p.render_feedback(&state);
+        // Follower A's BEAT SYNC LED full, free deck B's dark (note 0x58 on the
+        // deck channel — hardware-verify like the VU correction).
+        assert!(frame.contains(&[0x90, 0x58, 0x7F]));
+        assert!(frame.contains(&[0x91, 0x58, 0x00]));
+    }
+
+    #[test]
     fn flx4_decodes_eq_knob_and_jog_tick() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // EQ-high knob (CC 0x07 on channel 0) → absolute.
