@@ -45,8 +45,13 @@ Profile(
         InputBinding(status: 0x90, data1: 0x50, target: LoopReloop(A)),       // shift: ACTIVE
         InputBinding(status: 0x90, data1: 0x3E, target: LoopDelete(A)),       // shift: DEL
         InputBinding(status: 0x90, data1: 0x3D, target: LoopSave(A)),         // shift: MEMORY
-        // Not yet bound (need engine work): IN ADJ 0x4C, OUT ADJ 0x4E (loop-point
-        // nudge), MASTER long-press on SYNC.
+        // Loop-point adjust: SHIFT + LOOP IN/OUT held arms the jog to nudge the
+        // loop in/out point (quarter-beat, grid-snapped) instead of bending
+        // tempo — the jog (0x21 JogBend) reroutes in the decoder while held.
+        // SHIFT (0x3F) co-fires but is unbound.
+        InputBinding(status: 0x90, data1: 0x4C, target: LoopInAdj(A)),        // shift: IN ADJ
+        InputBinding(status: 0x90, data1: 0x4E, target: LoopOutAdj(A)),       // shift: OUT ADJ
+        // Not yet bound (need engine work): MASTER long-press on SYNC.
         // hot-cue pads 0x00..0x07 — momentary (hold-to-play): press jumps to the cue,
         // release returns to the slip ghost when slip is on (plain jump when off)
         InputBinding(status: 0x97, data1: 0x00, target: HotCueHold(A, 0)),
@@ -130,6 +135,8 @@ Profile(
         InputBinding(status: 0x91, data1: 0x50, target: LoopReloop(B)),       // shift: ACTIVE
         InputBinding(status: 0x91, data1: 0x3E, target: LoopDelete(B)),       // shift: DEL
         InputBinding(status: 0x91, data1: 0x3D, target: LoopSave(B)),         // shift: MEMORY
+        InputBinding(status: 0x91, data1: 0x4C, target: LoopInAdj(B)),        // shift: IN ADJ
+        InputBinding(status: 0x91, data1: 0x4E, target: LoopOutAdj(B)),       // shift: OUT ADJ
         InputBinding(status: 0x99, data1: 0x00, target: HotCueHold(B, 0)),
         InputBinding(status: 0x99, data1: 0x01, target: HotCueHold(B, 1)),
         InputBinding(status: 0x99, data1: 0x02, target: HotCueHold(B, 2)),

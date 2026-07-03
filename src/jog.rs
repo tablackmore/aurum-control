@@ -9,6 +9,11 @@
 /// little, a fast spin scrubs a lot.
 pub const SCRUB_DEGREES_PER_TICK: f32 = 0.5;
 
+/// Jog ticks to accumulate per quarter-beat loop-point nudge step. The FLX4 jog
+/// emits dozens of ±1 ticks per turn, so a raw tick-per-step would fly; ~12
+/// ticks/step gives a controllable fine adjust. Tune by ear on hardware.
+pub const JOG_TICKS_PER_NUDGE: i32 = 12;
+
 /// Tempo change per jog-bend tick (fraction of playback rate).
 const BEND_PER_TICK: f32 = 0.01;
 /// Maximum bend (±fraction), so a hard spin can't overspeed the deck.

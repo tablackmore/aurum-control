@@ -34,6 +34,7 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 |---|---|---|
 | Play / Cue | note `0x0B` / `0x0C` (`0x90`) | button |
 | Loop IN / OUT | note `0x10` / `0x11` (`0x90`) | button (shift: IN ADJ `0x4C` / OUT ADJ `0x4E`) |
+| IN / OUT ADJ (loop-point nudge) | note `0x4C` / `0x4E` (`0x90`/`0x91`), held | Hold (SHIFT+LOOP IN/OUT) + turn jog to nudge the active loop's in/out point by a grid-snapped quarter-beat. Jog flows as `JogBend` CC `0x21`; the decoder reroutes it to `LoopNudgeIn`/`LoopNudgeOut` while held. |
 | 4 BEAT/EXIT | note `0x4D` (`0x90`) | button (shift: ACTIVE `0x50`) |
 | CUE/LOOP CALL ◄ / ► | note `0x51` / `0x53` (`0x90`) | button (shift: DEL `0x3E` / MEMORY `0x3D`) |
 | MASTER / BEAT SYNC | note `0x58` (`0x90`) | button → `Sync` (fires per press; the app flips engine state). Shift: TEMPO RANGE `0x60` → `TempoRange` (frontend range-ladder cycle) |

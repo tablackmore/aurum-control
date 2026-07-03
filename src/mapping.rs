@@ -131,6 +131,16 @@ pub enum Target {
     LoopSlot(Deck, u8),
     /// Delete saved-loop slot `u8` (FLX4 shift + Beat-Loop pad).
     LoopSlotDelete(Deck, u8),
+    /// Hold to arm the deck's jog to nudge the loop IN point (SHIFT + LOOP IN).
+    /// Momentary; consumed by the decoder, never reaches the host.
+    LoopInAdj(Deck),
+    /// Hold to arm the deck's jog to nudge the loop OUT point (SHIFT + LOOP OUT).
+    LoopOutAdj(Deck),
+    /// Synthesized by the decoder while IN ADJ is held: a signed quarter-beat
+    /// step for the loop in-point (relative Delta).
+    LoopNudgeIn(Deck),
+    /// Synthesized by the decoder while OUT ADJ is held: quarter-beat step, out-point.
+    LoopNudgeOut(Deck),
     // ── Jog (relative; driven by a device profile, not MIDI-learn) ───────────
     /// Jog wheel touched (on/off) — gates scrub vs let-it-play.
     JogTouch(Deck),
@@ -194,13 +204,17 @@ impl Target {
         match self {
             StemVolume(..) | EqLow(_) | EqMid(_) | EqHigh(_) | Pan(_) | ChannelVolume(_)
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
-            | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
+            | JogScratch(_) | JogBend(_) | LibraryScroll | LoopNudgeIn(_) | LoopNudgeOut(_) => {
+                Kind::Continuous
+            }
             StemMute(..) | StemSolo(..) | Play(_) | Keylock(_) | Quantize(_)
             | TriggerQuantize(_) | Slip(_) | CueMonitor(_) | CueMaster => Kind::Toggle,
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
-            HotCueHold(..) | JogTouch(_) | PadFx(..) => Kind::Momentary,
+            HotCueHold(..) | JogTouch(_) | PadFx(..) | LoopInAdj(_) | LoopOutAdj(_) => {
+                Kind::Momentary
+            }
             // LoopToggle/Sync flip engine-side state, so they fire per press like
             // a trigger — a mapping-side latch would go stale when the state
             // changes from the UI (or a sync follower swap / auto-mix).
@@ -270,6 +284,10 @@ impl Target {
             LoopDelete(d) => format!("Deck {} · Delete loop", d.tag()),
             LoopSlot(d, s) => format!("Deck {} · Loop slot {}", d.tag(), s + 1),
             LoopSlotDelete(d, s) => format!("Deck {} · Delete loop slot {}", d.tag(), s + 1),
+            LoopInAdj(d) => format!("Deck {} · Loop in adjust", d.tag()),
+            LoopOutAdj(d) => format!("Deck {} · Loop out adjust", d.tag()),
+            LoopNudgeIn(d) => format!("Deck {} · Nudge loop in", d.tag()),
+            LoopNudgeOut(d) => format!("Deck {} · Nudge loop out", d.tag()),
             LoadDeck(d) => format!("Library · Load deck {}", d.tag()),
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
             Filter(d) => format!("Deck {} · Filter", d.tag()),
@@ -863,6 +881,30 @@ mod tests {
             "Deck B · Call next loop"
         );
         assert_eq!(Target::LoopDelete(Deck::A).label(), "Deck A · Delete loop");
+    }
+
+    #[test]
+    fn loop_adjust_and_nudge_targets_classify_and_label() {
+        assert_eq!(Target::LoopInAdj(Deck::A).kind(), Kind::Momentary);
+        assert_eq!(Target::LoopOutAdj(Deck::B).kind(), Kind::Momentary);
+        assert_eq!(Target::LoopNudgeIn(Deck::A).kind(), Kind::Continuous);
+        assert_eq!(Target::LoopNudgeOut(Deck::B).kind(), Kind::Continuous);
+        assert_eq!(
+            Target::LoopInAdj(Deck::A).label(),
+            "Deck A · Loop in adjust"
+        );
+        assert_eq!(
+            Target::LoopOutAdj(Deck::B).label(),
+            "Deck B · Loop out adjust"
+        );
+        assert_eq!(
+            Target::LoopNudgeIn(Deck::A).label(),
+            "Deck A · Nudge loop in"
+        );
+        assert_eq!(
+            Target::LoopNudgeOut(Deck::B).label(),
+            "Deck B · Nudge loop out"
+        );
     }
 
     #[test]
