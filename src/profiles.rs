@@ -229,6 +229,20 @@ mod tests {
     }
 
     #[test]
+    fn flx4_feedback_renders_master_cue_led() {
+        use crate::FeedbackState;
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let lit = p.render_feedback(&FeedbackState {
+            master_cued: true,
+            ..Default::default()
+        });
+        // MASTER CUE button LED (96 63) mirrors the master-cue toggle.
+        assert!(lit.contains(&[0x96, 0x63, 0x7F]));
+        let dark = p.render_feedback(&FeedbackState::default());
+        assert!(dark.contains(&[0x96, 0x63, 0x00]));
+    }
+
+    #[test]
     fn flx4_decodes_headphone_cue_buttons_and_mix_knob() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // Headphone-cue (PFL) buttons: note 0x54 on the deck channel → CueMonitor.
@@ -258,6 +272,26 @@ mod tests {
             .unwrap();
         assert_eq!(mix.target, Target::CueMix);
         assert_eq!(mix.value, ActionValue::Absolute(1.0));
+        // HEADPHONES LEVEL knob: CC 0x0D on the mixer channel → HeadphoneLevel
+        // (captured live 2026-07-03 — it DOES send MIDI).
+        let level = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 6,
+                controller: 0x0D,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(level.target, Target::HeadphoneLevel);
+        assert_eq!(level.value, ActionValue::Absolute(1.0));
+        // MASTER CUE button: note 0x63 on channel 7 (0x96) → CueMaster toggle.
+        let master = p
+            .decode(&MidiMessage::NoteOn {
+                channel: 6,
+                note: 0x63,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(master.target, Target::CueMaster);
     }
 
     #[test]

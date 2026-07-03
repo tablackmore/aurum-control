@@ -20,6 +20,8 @@ pub struct FeedbackState {
     pub master_level: f32,
     /// Per-deck headphone-cue (PFL) state (drives cue-button LEDs).
     pub deck_cued: [bool; 2],
+    /// Master headphone-cue state (drives the MASTER CUE button LED).
+    pub master_cued: bool,
     /// Per-deck loop-active state (drives the IN/OUT button LEDs).
     pub loop_active: [bool; 2],
     /// Per-deck saved-loop slot occupancy (drives the Beat-Loop pad LEDs).
@@ -39,6 +41,8 @@ pub enum FeedbackSource {
     DeckPlaying(Deck),
     /// Deck headphone-cue (PFL) — on → full (`0x7F`), off → zero (LED).
     DeckCued(Deck),
+    /// Master headphone-cue — on → full (`0x7F`), off → zero (LED).
+    MasterCued,
     /// Deck loop-active — on → full (`0x7F`), off → zero (IN/OUT button LEDs).
     LoopActive(Deck),
     /// A saved-loop slot's LED (Beat-Loop pad): off when empty, dim when filled,
@@ -84,6 +88,13 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                 }
                 FeedbackSource::DeckCued(d) => {
                     if state.deck_cued[idx(d)] {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::MasterCued => {
+                    if state.master_cued {
                         0x7F
                     } else {
                         0x00

@@ -88,6 +88,9 @@ pub enum Target {
     /// Slip mode (held loops/cues play momentarily, playback returns in place).
     Slip(Deck),
     CueMonitor(Deck),
+    /// Master headphone-cue: routes the master mix onto the CUE side of the
+    /// headphone blend (FLX4 "MASTER CUE" button).
+    CueMaster,
     LoopToggle(Deck),
     // ── Triggers ─────────────────────────────────────────────────
     HotCue(Deck, u8),
@@ -184,7 +187,7 @@ impl Target {
             | Trim(_) | Tempo(_) | Seek(_) | Crossfade | Master | CueMix | HeadphoneLevel
             | JogScratch(_) | JogBend(_) | LibraryScroll => Kind::Continuous,
             StemMute(..) | StemSolo(..) | Play(_) | Sync(_) | Keylock(_) | Quantize(_)
-            | TriggerQuantize(_) | Slip(_) | CueMonitor(_) => Kind::Toggle,
+            | TriggerQuantize(_) | Slip(_) | CueMonitor(_) | CueMaster => Kind::Toggle,
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
@@ -225,6 +228,7 @@ impl Target {
             TriggerQuantize(d) => format!("Deck {} · Quantize", d.tag()),
             Slip(d) => format!("Deck {} · Slip", d.tag()),
             CueMonitor(d) => format!("Deck {} · Cue", d.tag()),
+            CueMaster => "Master · Cue".into(),
             LoopToggle(d) => format!("Deck {} · Loop", d.tag()),
             LoopIn(d) => format!("Deck {} · Loop in", d.tag()),
             LoopOut(d) => format!("Deck {} · Loop out", d.tag()),
