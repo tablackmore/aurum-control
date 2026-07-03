@@ -82,6 +82,37 @@ mod tests {
     }
 
     #[test]
+    fn flx4_decodes_loop_cluster_both_decks() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // (channel, note, expected target) — notes captured live off the unit.
+        let cases = [
+            (0u8, 0x10u8, Target::LoopIn(Deck::A)),
+            (0, 0x11, Target::LoopOut(Deck::A)),
+            (0, 0x4D, Target::LoopFourOrExit(Deck::A)),
+            (0, 0x51, Target::LoopCallPrev(Deck::A)),
+            (0, 0x53, Target::LoopCallNext(Deck::A)),
+            (0, 0x58, Target::Sync(Deck::A)),
+            (0, 0x50, Target::LoopReloop(Deck::A)),
+            (0, 0x3E, Target::LoopDelete(Deck::A)),
+            (0, 0x3D, Target::LoopSave(Deck::A)),
+            (1, 0x10, Target::LoopIn(Deck::B)),
+            (1, 0x4D, Target::LoopFourOrExit(Deck::B)),
+            (1, 0x3D, Target::LoopSave(Deck::B)),
+            (1, 0x58, Target::Sync(Deck::B)),
+        ];
+        for (channel, note, want) in cases {
+            let a = p
+                .decode(&MidiMessage::NoteOn {
+                    channel,
+                    note,
+                    velocity: 127,
+                })
+                .unwrap_or_else(|| panic!("no binding for ch {channel} note {note:#04x}"));
+            assert_eq!(a.target, want, "ch {channel} note {note:#04x}");
+        }
+    }
+
+    #[test]
     fn flx4_decodes_eq_knob_and_jog_tick() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // EQ-high knob (CC 0x07 on channel 0) → absolute.
