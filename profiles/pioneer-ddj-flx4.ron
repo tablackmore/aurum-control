@@ -229,8 +229,14 @@ Profile(
         InputBinding(status: 0x94, data1: 0x66, target: BeatFxAuto),        // SHIFT+◀ AUTO
         InputBinding(status: 0x94, data1: 0x6B, target: BeatFxTap),         // SHIFT+▶ TAP
         InputBinding(status: 0xB4, data1: 0x02, target: BeatFxLevel, hires: true), // LEVEL/DEPTH (LSB 0x22)
-        InputBinding(status: 0x94, data1: 0x47, target: BeatFxOn),          // ON/OFF
-        InputBinding(status: 0x94, data1: 0x43, target: BeatFxRelease),     // SHIFT+ON/OFF
+        // ON/OFF and RELEASE are addressed to the ASSIGNED channel (hardware-verified
+        // 2026-07-04): assign 1 and 1&2 send on 0x94, assign 2 sends on 0x95. Bind
+        // both channels; the LED echo stays on 0x94, which the unit honours at every
+        // switch position.
+        InputBinding(status: 0x94, data1: 0x47, target: BeatFxOn),          // ON/OFF (assign 1, 1&2)
+        InputBinding(status: 0x95, data1: 0x47, target: BeatFxOn),          // ON/OFF (assign 2)
+        InputBinding(status: 0x94, data1: 0x43, target: BeatFxRelease),     // SHIFT+ON/OFF (assign 1, 1&2)
+        InputBinding(status: 0x95, data1: 0x43, target: BeatFxRelease),     // SHIFT+ON/OFF (assign 2)
     ],
     // ───────── feedback: engine state → LEDs/VU (diffed by the app) ─────────
     // VU meters follow the deck channel like everything else: left = B0 02,

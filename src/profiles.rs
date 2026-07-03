@@ -539,8 +539,13 @@ mod tests {
         let level = find(0xB4, 0x02);
         assert_eq!(level.target, Target::BeatFxLevel);
         assert!(level.hires, "LEVEL/DEPTH is a 14-bit pair (LSB CC 0x22)");
+        // ON/OFF and RELEASE follow the assign switch's channel (hardware-verified
+        // 2026-07-04): positions 1 and 1&2 send on 0x94, position 2 on 0x95. The
+        // rest of the section is channel-fixed on 0x94.
         assert_eq!(find(0x94, 0x47).target, Target::BeatFxOn);
+        assert_eq!(find(0x95, 0x47).target, Target::BeatFxOn);
         assert_eq!(find(0x94, 0x43).target, Target::BeatFxRelease);
+        assert_eq!(find(0x95, 0x43).target, Target::BeatFxRelease);
         // ON/OFF LED echoes the input address.
         assert!(p
             .feedback
