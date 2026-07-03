@@ -75,6 +75,24 @@ Profile(
         InputBinding(status: 0x97, data1: 0x15, target: FxSlotEnable(A, 0)),      // FX slot 1
         InputBinding(status: 0x97, data1: 0x16, target: FxSlotEnable(A, 1)),      // FX slot 2
         InputBinding(status: 0x97, data1: 0x17, target: FxSlotEnable(A, 2)),      // FX slot 3
+        // Beat-Loop pad mode (SHIFT+BEAT JUMP) — 8 pads → saved-loop slots;
+        // SHIFT+pad (channel 0x98) → delete. Captured live 2026-07-03.
+        InputBinding(status: 0x97, data1: 0x60, target: LoopSlot(A, 0)),
+        InputBinding(status: 0x97, data1: 0x61, target: LoopSlot(A, 1)),
+        InputBinding(status: 0x97, data1: 0x62, target: LoopSlot(A, 2)),
+        InputBinding(status: 0x97, data1: 0x63, target: LoopSlot(A, 3)),
+        InputBinding(status: 0x97, data1: 0x64, target: LoopSlot(A, 4)),
+        InputBinding(status: 0x97, data1: 0x65, target: LoopSlot(A, 5)),
+        InputBinding(status: 0x97, data1: 0x66, target: LoopSlot(A, 6)),
+        InputBinding(status: 0x97, data1: 0x67, target: LoopSlot(A, 7)),
+        InputBinding(status: 0x98, data1: 0x60, target: LoopSlotDelete(A, 0)),
+        InputBinding(status: 0x98, data1: 0x61, target: LoopSlotDelete(A, 1)),
+        InputBinding(status: 0x98, data1: 0x62, target: LoopSlotDelete(A, 2)),
+        InputBinding(status: 0x98, data1: 0x63, target: LoopSlotDelete(A, 3)),
+        InputBinding(status: 0x98, data1: 0x64, target: LoopSlotDelete(A, 4)),
+        InputBinding(status: 0x98, data1: 0x65, target: LoopSlotDelete(A, 5)),
+        InputBinding(status: 0x98, data1: 0x66, target: LoopSlotDelete(A, 6)),
+        InputBinding(status: 0x98, data1: 0x67, target: LoopSlotDelete(A, 7)),
 
         // ───────── Deck B (note 0x91, CC 0xB1, pads 0x99) ─────────
         InputBinding(status: 0x91, data1: 0x0B, target: Play(B)),
@@ -126,6 +144,23 @@ Profile(
         InputBinding(status: 0x99, data1: 0x15, target: FxSlotEnable(B, 0)),      // FX slot 1
         InputBinding(status: 0x99, data1: 0x16, target: FxSlotEnable(B, 1)),      // FX slot 2
         InputBinding(status: 0x99, data1: 0x17, target: FxSlotEnable(B, 2)),      // FX slot 3
+        // Beat-Loop pad mode — 8 pads → saved-loop slots; SHIFT+pad (0x9A) → delete.
+        InputBinding(status: 0x99, data1: 0x60, target: LoopSlot(B, 0)),
+        InputBinding(status: 0x99, data1: 0x61, target: LoopSlot(B, 1)),
+        InputBinding(status: 0x99, data1: 0x62, target: LoopSlot(B, 2)),
+        InputBinding(status: 0x99, data1: 0x63, target: LoopSlot(B, 3)),
+        InputBinding(status: 0x99, data1: 0x64, target: LoopSlot(B, 4)),
+        InputBinding(status: 0x99, data1: 0x65, target: LoopSlot(B, 5)),
+        InputBinding(status: 0x99, data1: 0x66, target: LoopSlot(B, 6)),
+        InputBinding(status: 0x99, data1: 0x67, target: LoopSlot(B, 7)),
+        InputBinding(status: 0x9A, data1: 0x60, target: LoopSlotDelete(B, 0)),
+        InputBinding(status: 0x9A, data1: 0x61, target: LoopSlotDelete(B, 1)),
+        InputBinding(status: 0x9A, data1: 0x62, target: LoopSlotDelete(B, 2)),
+        InputBinding(status: 0x9A, data1: 0x63, target: LoopSlotDelete(B, 3)),
+        InputBinding(status: 0x9A, data1: 0x64, target: LoopSlotDelete(B, 4)),
+        InputBinding(status: 0x9A, data1: 0x65, target: LoopSlotDelete(B, 5)),
+        InputBinding(status: 0x9A, data1: 0x66, target: LoopSlotDelete(B, 6)),
+        InputBinding(status: 0x9A, data1: 0x67, target: LoopSlotDelete(B, 7)),
 
         // ───────── shared (browser/mixer channel 6) ─────────
         InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),

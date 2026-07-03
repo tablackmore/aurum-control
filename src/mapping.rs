@@ -118,6 +118,11 @@ pub enum Target {
     LoopCallNext(Deck),
     /// Delete the selected saved loop (FLX4 shift "DEL").
     LoopDelete(Deck),
+    /// Hot-cue-style save-or-recall of saved-loop slot `u8` (FLX4 Beat-Loop pad):
+    /// empty slot saves the current loop, filled slot recalls it.
+    LoopSlot(Deck, u8),
+    /// Delete saved-loop slot `u8` (FLX4 shift + Beat-Loop pad).
+    LoopSlotDelete(Deck, u8),
     // ── Jog (relative; driven by a device profile, not MIDI-learn) ───────────
     /// Jog wheel touched (on/off) — gates scrub vs let-it-play.
     JogTouch(Deck),
@@ -185,7 +190,7 @@ impl Target {
             LoopToggle(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LoopFourOrExit(_)
             | LoopReloop(_) | LoopSave(_) | LoopCallPrev(_) | LoopCallNext(_) | LoopDelete(_)
-            | LibraryOpen | LoadDeck(_) => Kind::Trigger,
+            | LoopSlot(..) | LoopSlotDelete(..) | LibraryOpen | LoadDeck(_) => Kind::Trigger,
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
             | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
@@ -242,6 +247,8 @@ impl Target {
             LoopCallPrev(d) => format!("Deck {} · Call prev loop", d.tag()),
             LoopCallNext(d) => format!("Deck {} · Call next loop", d.tag()),
             LoopDelete(d) => format!("Deck {} · Delete loop", d.tag()),
+            LoopSlot(d, s) => format!("Deck {} · Loop slot {}", d.tag(), s + 1),
+            LoopSlotDelete(d, s) => format!("Deck {} · Delete loop slot {}", d.tag(), s + 1),
             LoadDeck(d) => format!("Library · Load deck {}", d.tag()),
             StemSend(d, s) => format!("Deck {} · Stem {} send", d.tag(), s + 1),
             Filter(d) => format!("Deck {} · Filter", d.tag()),
@@ -805,6 +812,17 @@ mod tests {
             "Deck A · 4-beat / exit"
         );
         assert_eq!(Target::LoopReloop(Deck::B).label(), "Deck B · Reloop");
+    }
+
+    #[test]
+    fn loop_slot_targets_are_triggers_with_labels() {
+        assert_eq!(Target::LoopSlot(Deck::A, 0).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopSlotDelete(Deck::B, 7).kind(), Kind::Trigger);
+        assert_eq!(Target::LoopSlot(Deck::A, 2).label(), "Deck A · Loop slot 3");
+        assert_eq!(
+            Target::LoopSlotDelete(Deck::B, 0).label(),
+            "Deck B · Delete loop slot 1"
+        );
     }
 
     #[test]
