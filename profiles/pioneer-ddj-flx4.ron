@@ -23,6 +23,8 @@ Profile(
         // ───────── Deck A (note 0x90, CC 0xB0, pads 0x97) ─────────
         InputBinding(status: 0x90, data1: 0x0B, target: Play(A)),
         InputBinding(status: 0x90, data1: 0x0C, target: CueMonitor(A)),
+        // Headphone-cue (PFL) button under the channel strip (Mixxx `pfl`).
+        InputBinding(status: 0x90, data1: 0x54, target: CueMonitor(A)),
         InputBinding(status: 0xB0, data1: 0x04, target: Trim(A),          hires: true),
         InputBinding(status: 0xB0, data1: 0x07, target: EqHigh(A),        hires: true),
         InputBinding(status: 0xB0, data1: 0x0B, target: EqMid(A),         hires: true),
@@ -77,6 +79,8 @@ Profile(
         // ───────── Deck B (note 0x91, CC 0xB1, pads 0x99) ─────────
         InputBinding(status: 0x91, data1: 0x0B, target: Play(B)),
         InputBinding(status: 0x91, data1: 0x0C, target: CueMonitor(B)),
+        // Headphone-cue (PFL) button under the channel strip (Mixxx `pfl`).
+        InputBinding(status: 0x91, data1: 0x54, target: CueMonitor(B)),
         InputBinding(status: 0xB1, data1: 0x04, target: Trim(B),          hires: true),
         InputBinding(status: 0xB1, data1: 0x07, target: EqHigh(B),        hires: true),
         InputBinding(status: 0xB1, data1: 0x0B, target: EqMid(B),         hires: true),
@@ -125,6 +129,12 @@ Profile(
 
         // ───────── shared (browser/mixer channel 6) ─────────
         InputBinding(status: 0xB6, data1: 0x1F, target: Crossfade,        hires: true),
+        // MASTER LEVEL rotary — hi-res CC 0x08 (+0x28 LSB), captured live 2026-07-03.
+        // (Mixxx doesn't map it; it does send MIDI. The knob is a digital encoder
+        // into the app's master gain — it does NOT attenuate the master jacks.)
+        InputBinding(status: 0xB6, data1: 0x08, target: Master,           hires: true),
+        // HEADPHONES MIX knob — blends cued decks vs master in the phones bus.
+        InputBinding(status: 0xB6, data1: 0x0C, target: CueMix,           hires: true),
         // CFX (colour FX) knobs — addresses confirmed live on hardware (ch 6)
         InputBinding(status: 0xB6, data1: 0x17, target: Filter(A),        hires: true),
         InputBinding(status: 0xB6, data1: 0x18, target: Filter(B),        hires: true),
@@ -136,13 +146,18 @@ Profile(
         InputBinding(status: 0x96, data1: 0x47, target: LoadDeck(B)),
     ],
     // ───────── feedback: engine state → LEDs/VU (diffed by the app) ─────────
-    // VU meters live on channel 1 for BOTH decks (B0 02 = left, B0 03 = right —
-    // corrects the Mixxx B1 02 bug). Play LEDs are note-on 0x7F/0x00 on the deck
-    // channel. Requires the enable SysEx (sent on connect) first.
+    // VU meters follow the deck channel like everything else: left = B0 02,
+    // right = B1 02 (matches Mixxx; confirmed by live ramp test 2026-07-03 —
+    // the earlier "both on channel 1, right = B0 03" doc claim was wrong and
+    // left the right meter dark). Play LEDs are note-on 0x7F/0x00 on the deck
+    // channel; headphone-cue LEDs mirror CueMonitor on note 0x54. Requires the
+    // enable SysEx (sent on connect) first.
     feedback: [
         FeedbackRule(source: DeckLevel(A),   status: 0xB0, data1: 0x02),
-        FeedbackRule(source: DeckLevel(B),   status: 0xB0, data1: 0x03),
+        FeedbackRule(source: DeckLevel(B),   status: 0xB1, data1: 0x02),
         FeedbackRule(source: DeckPlaying(A), status: 0x90, data1: 0x0B),
         FeedbackRule(source: DeckPlaying(B), status: 0x91, data1: 0x0B),
+        FeedbackRule(source: DeckCued(A),    status: 0x90, data1: 0x54),
+        FeedbackRule(source: DeckCued(B),    status: 0x91, data1: 0x54),
     ],
 )

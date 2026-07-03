@@ -46,6 +46,9 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | Tempo fader | CC `0x00` (+LSB), `0xB0` | 14-bit |
 | Color / Filter | CC `0x17` (+LSB), `0xB6` | 14-bit |
 | Crossfader | CC `0x1F` (+LSB), `0xB6` | 14-bit |
+| **Master level rotary** | CC `0x08` (+`0x28` LSB), `0xB6` | 14-bit — captured live 2026-07-03 (Mixxx doesn't map it) |
+| Headphones mix | CC `0x0C` (+`0x2C` LSB), `0xB6` | 14-bit |
+| Headphone-cue (PFL) 1 / 2 | note `0x54` (`0x90` / `0x91`) | button (LED echoes state) |
 | **Jog touch** | note `0x36` (`0x90`) | button (on=touched) |
 | **Jog top / scratch** | CC `0x22` (`0xB0`) | **relative, centre 64** (`0x41`=+1, `0x3F`=−1) |
 | **Jog ring / pitch-bend** | CC `0x21` (`0xB0`) | relative, centre 64 |
@@ -63,15 +66,19 @@ browse encoder at 0. The profile must declare per-control encoding.
 | LED | Message |
 |---|---|
 | **VU meter — LEFT (deck 1)** | **CC `0x02`, ch 1 (`0xB0`)**, value `level×127` |
-| **VU meter — RIGHT (deck 2)** | **CC `0x03`, ch 1 (`0xB0`)**, value `level×127` |
+| **VU meter — RIGHT (deck 2)** | **CC `0x02`, ch 2 (`0xB1`)**, value `level×127` |
+| Headphone-cue (PFL) LED | note `0x54` (`0x90` deck 1, `0x91` deck 2) |
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
 | Pad-mode LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler) | notes `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90`/`0x91`) |
 | Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2); colour via velocity palette (TODO from Pioneer list) |
 
-**⚠️ VU correction:** the public Mixxx script drives deck 2 on `B1 02`, but on
-real hardware **both meters live on channel 1** — left = `B0 02`, right = `B0 03`.
-Verified live (left bar and right bar ramp independently). The meter shows the
-value as a level/peak position, so feed it the deck's current level each tick.
+**⚠️ VU meters — Mixxx was right:** an earlier revision of this doc claimed both
+meters live on channel 1 (right = `B0 03`) and called Mixxx's `B1 02` a bug. A
+controlled ramp test (2026-07-03: each candidate address ramped in isolation,
+meters observed live) proved that wrong — `B0 03` leaves the right meter dark;
+the right meter is **`B1 02`**, on the deck-2 channel like every other deck-2
+control. The meter shows the value as a level/peak position, so feed it the
+deck's current level each tick.
 
 **Pad-mode LEDs are mutually exclusive** — the unit keeps only one lit (it shows
 the active pad mode), so to switch modes just light the new one.
@@ -81,10 +88,10 @@ the active pad mode), so to switch modes just light the new one.
 - **`aurum-control` (MIDI):** the profile carries the init SysEx, the input
   bindings above (with per-control encoding + hi-res), and feedback rules
   (transport LEDs, pad-mode LEDs, **and the VU meters** — `vu_meter` level →
-  `B0 02` / `B0 03`). Add a small **dead-band** on the tempo-fader inputs to
+  `B0 02` / `B1 02`). Add a small **dead-band** on the tempo-fader inputs to
   swallow residual LSB jitter.
 - **VU is MIDI feedback after all** — not the hardware-audio path I first guessed.
-  AURUM's feedback driver maps each deck's output level to `B0 02`/`B0 03`. (If we
+  AURUM's feedback driver maps each deck's output level to `B0 02`/`B1 02`. (If we
   *also* route audio through the FLX4's soundcard for headphone cue, that's an
   independent `audio-host` task.)
 - Deck 2 inputs/outputs are inferred from deck 1 by bumping the channel, so the
