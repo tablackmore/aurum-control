@@ -214,6 +214,23 @@ Profile(
         InputBinding(status: 0x96, data1: 0x41, target: LibraryOpen),
         InputBinding(status: 0x96, data1: 0x46, target: LoadDeck(A)),
         InputBinding(status: 0x96, data1: 0x47, target: LoadDeck(B)),
+
+        // ───────── Beat FX section (channel 5/6: 0x94/0x95, CC 0xB4) ─────────
+        // Hardware-captured live with the ctl harness on 2026-07-03 — VERIFIED,
+        // not inferred. The 1/2/1&2 slide switch emits one on/off flag note per
+        // deck (both on = 1&2; each move re-sends offs then ons — the host
+        // treats the transient both-off as "no change").
+        InputBinding(status: 0x94, data1: 0x10, target: BeatFxAssign(A)),
+        InputBinding(status: 0x95, data1: 0x11, target: BeatFxAssign(B)),
+        InputBinding(status: 0x94, data1: 0x63, target: BeatFxSelect(1)),   // FX SELECT ▼
+        InputBinding(status: 0x94, data1: 0x64, target: BeatFxSelect(-1)),  // SHIFT ▲
+        InputBinding(status: 0x94, data1: 0x4A, target: BeatFxBeat(-1)),    // BEAT ◀
+        InputBinding(status: 0x94, data1: 0x4B, target: BeatFxBeat(1)),     // BEAT ▶
+        InputBinding(status: 0x94, data1: 0x66, target: BeatFxAuto),        // SHIFT+◀ AUTO
+        InputBinding(status: 0x94, data1: 0x6B, target: BeatFxTap),         // SHIFT+▶ TAP
+        InputBinding(status: 0xB4, data1: 0x02, target: BeatFxLevel, hires: true), // LEVEL/DEPTH (LSB 0x22)
+        InputBinding(status: 0x94, data1: 0x47, target: BeatFxOn),          // ON/OFF
+        InputBinding(status: 0x94, data1: 0x43, target: BeatFxRelease),     // SHIFT+ON/OFF
     ],
     // ───────── feedback: engine state → LEDs/VU (diffed by the app) ─────────
     // VU meters follow the deck channel like everything else: left = B0 02,
@@ -257,5 +274,7 @@ Profile(
         FeedbackRule(source: SavedLoopSlot(B, 5), status: 0x99, data1: 0x65),
         FeedbackRule(source: SavedLoopSlot(B, 6), status: 0x99, data1: 0x66),
         FeedbackRule(source: SavedLoopSlot(B, 7), status: 0x99, data1: 0x67),
+        // Beat FX ON/OFF LED — echoes the input address (standard Pioneer pattern).
+        FeedbackRule(source: BeatFxOn, status: 0x94, data1: 0x47),
     ],
 )

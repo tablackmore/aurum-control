@@ -322,10 +322,12 @@ mod tests {
             status: 0x94,
             data1: 0x47,
         }];
-        let mut st = FeedbackState::default();
-        st.beat_fx_on = true;
-        assert_eq!(render(&rules, &st), vec![[0x94, 0x47, 0x7F]]);
-        st.beat_fx_on = false;
-        assert_eq!(render(&rules, &st), vec![[0x94, 0x47, 0x00]]);
+        let on = FeedbackState {
+            beat_fx_on: true,
+            ..Default::default()
+        };
+        assert_eq!(render(&rules, &on), vec![[0x94, 0x47, 0x7F]]);
+        let off = FeedbackState::default(); // beat_fx_on defaults false
+        assert_eq!(render(&rules, &off), vec![[0x94, 0x47, 0x00]]);
     }
 }
