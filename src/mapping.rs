@@ -195,6 +195,29 @@ pub enum Target {
     /// UI-bound like the library targets: the range ladder is a frontend
     /// setting, so the host routes this to the UI, not the engine.
     TempoRange(Deck),
+    // ── Beat FX (Pioneer-style master beat-FX section; host = pro engine,
+    // a free host may no-op these like the other extended targets) ──────────
+    /// Beat FX assign flag for this deck (FLX4 slide switch `1/2/1&2` emits one
+    /// on/off note per deck; the HOST combines the two flags — both on = both
+    /// decks, both off transiently mid-move = no change).
+    BeatFxAssign(Deck),
+    /// Cycle the Beat FX selection: `1` = next (FX SELECT ▼), `-1` = prev (SHIFT).
+    BeatFxSelect(i8),
+    /// Step the Beat FX beat ladder: `-1` = ◀, `1` = ▶.
+    BeatFxBeat(i8),
+    /// Beat FX tempo follows the assigned deck again (SHIFT+◀ "AUTO").
+    BeatFxAuto,
+    /// Beat FX tap-tempo press (SHIFT+▶ "TAP").
+    BeatFxTap,
+    /// Beat FX LEVEL/DEPTH knob.
+    BeatFxLevel,
+    /// Beat FX ON/OFF. Fires per press like `Sync`/`LoopToggle` — the HOST
+    /// flips real engine state (the UI can also flip it, so a mapping-side
+    /// latch would go stale). LED via `FeedbackState::beat_fx_on`.
+    BeatFxOn,
+    /// Beat FX release: musical exit — the FX stops but rings out
+    /// (FLX4 SHIFT + ON/OFF).
+    BeatFxRelease,
 }
 
 impl Target {
@@ -212,9 +235,8 @@ impl Target {
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
-            HotCueHold(..) | JogTouch(_) | PadFx(..) | LoopInAdj(_) | LoopOutAdj(_) => {
-                Kind::Momentary
-            }
+            HotCueHold(..) | JogTouch(_) | PadFx(..) | LoopInAdj(_) | LoopOutAdj(_)
+            | BeatFxAssign(_) => Kind::Momentary,
             // LoopToggle/Sync flip engine-side state, so they fire per press like
             // a trigger — a mapping-side latch would go stale when the state
             // changes from the UI (or a sync follower swap / auto-mix).
@@ -226,10 +248,11 @@ impl Target {
             }
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
-            | FxSlotParam(..) | FxSlotDivision(..) => Kind::Continuous,
+            | FxSlotParam(..) | FxSlotDivision(..) | BeatFxLevel => Kind::Continuous,
             DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) | VinylBrake(..)
             | BeatRepeatRoll(..) => Kind::Toggle,
-            Riser(..) => Kind::Trigger,
+            Riser(..) | BeatFxSelect(_) | BeatFxBeat(_) | BeatFxAuto | BeatFxTap | BeatFxOn
+            | BeatFxRelease => Kind::Trigger,
         }
     }
 
@@ -304,6 +327,17 @@ impl Target {
             BeatRepeatRoll(d, beats) => format!("Deck {} · Beat Roll {}", d.tag(), beats),
             Riser(d) => format!("Deck {} · Riser", d.tag()),
             PadFx(d, i) => format!("Deck {} · Pad FX {}", d.tag(), u16::from(i) + 1),
+            BeatFxAssign(d) => format!("Beat FX · Assign deck {}", d.tag()),
+            BeatFxSelect(dir) => format!(
+                "Beat FX · Select {}",
+                if dir >= 0 { "next" } else { "prev" }
+            ),
+            BeatFxBeat(dir) => format!("Beat FX · Beat {}", if dir >= 0 { "▶" } else { "◀" }),
+            BeatFxAuto => "Beat FX · Auto BPM".into(),
+            BeatFxTap => "Beat FX · Tap tempo".into(),
+            BeatFxLevel => "Beat FX · Level/Depth".into(),
+            BeatFxOn => "Beat FX · On/Off".into(),
+            BeatFxRelease => "Beat FX · Release".into(),
         }
     }
 }
@@ -1269,5 +1303,39 @@ mod tests {
             assert!(Target::Riser(d).label().contains(tag));
             assert!(Target::PadFx(d, 0).label().contains(tag));
         }
+    }
+
+    #[test]
+    fn beat_fx_target_kinds() {
+        assert_eq!(Target::BeatFxAssign(Deck::A).kind(), Kind::Momentary);
+        assert_eq!(Target::BeatFxLevel.kind(), Kind::Continuous);
+        for t in [
+            Target::BeatFxSelect(1),
+            Target::BeatFxSelect(-1),
+            Target::BeatFxBeat(-1),
+            Target::BeatFxAuto,
+            Target::BeatFxTap,
+            Target::BeatFxOn,
+            Target::BeatFxRelease,
+        ] {
+            assert_eq!(t.kind(), Kind::Trigger, "{t:?}");
+        }
+    }
+
+    #[test]
+    fn beat_fx_labels() {
+        assert_eq!(
+            Target::BeatFxAssign(Deck::B).label(),
+            "Beat FX · Assign deck B"
+        );
+        assert_eq!(Target::BeatFxSelect(1).label(), "Beat FX · Select next");
+        assert_eq!(Target::BeatFxSelect(-1).label(), "Beat FX · Select prev");
+        assert_eq!(Target::BeatFxBeat(1).label(), "Beat FX · Beat ▶");
+        assert_eq!(Target::BeatFxBeat(-1).label(), "Beat FX · Beat ◀");
+        assert_eq!(Target::BeatFxOn.label(), "Beat FX · On/Off");
+        assert_eq!(Target::BeatFxRelease.label(), "Beat FX · Release");
+        assert_eq!(Target::BeatFxLevel.label(), "Beat FX · Level/Depth");
+        assert_eq!(Target::BeatFxAuto.label(), "Beat FX · Auto BPM");
+        assert_eq!(Target::BeatFxTap.label(), "Beat FX · Tap tempo");
     }
 }
