@@ -3,7 +3,7 @@
 //! writing a file, not code. Pure — no MIDI I/O, no engine dependency.
 
 use crate::feedback::{self, FeedbackRule, FeedbackState};
-use crate::{Kind, MidiMessage, Target};
+use crate::{Deck, Kind, MidiMessage, Target};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -160,6 +160,22 @@ fn msg_addr(msg: &MidiMessage) -> Option<(u8, u8)> {
     }
 }
 
+/// Which loop boundary a held IN/OUT ADJ button is adjusting.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoopEdge {
+    In,
+    Out,
+}
+
+/// If `t` is a loop-adjust hold, the deck + which boundary it arms.
+fn loop_adjust_edge(t: Target) -> Option<(Deck, LoopEdge)> {
+    match t {
+        Target::LoopInAdj(d) => Some((d, LoopEdge::In)),
+        Target::LoopOutAdj(d) => Some((d, LoopEdge::Out)),
+        _ => None,
+    }
+}
+
 /// Per-button runtime state for the stateful decoder.
 #[derive(Default)]
 struct ButtonState {
@@ -182,6 +198,10 @@ struct ButtonState {
 pub struct ProfileDecoder {
     profile: Profile,
     buttons: HashMap<(u8, u8), ButtonState>,
+    /// Which loop boundary each deck is jog-adjusting (IN/OUT ADJ held).
+    adjust: HashMap<Deck, LoopEdge>,
+    /// Jog ticks accumulated toward the next quarter-beat nudge step, per deck.
+    nudge_accum: HashMap<Deck, i32>,
 }
 
 impl ProfileDecoder {
@@ -190,6 +210,8 @@ impl ProfileDecoder {
         Self {
             profile,
             buttons: HashMap::new(),
+            adjust: HashMap::new(),
+            nudge_accum: HashMap::new(),
         }
     }
 
@@ -201,6 +223,25 @@ impl ProfileDecoder {
     /// Decode one message, applying Toggle/Trigger/Continuous semantics.
     pub fn decode(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
         let raw = self.profile.decode(msg)?;
+        // Loop-point adjust: holding IN/OUT ADJ arms this deck's jog to nudge a
+        // loop boundary. Swallow the hold itself (the host never sees it).
+        if let Some((deck, edge)) = loop_adjust_edge(raw.target) {
+            let held = matches!(raw.value, ActionValue::Absolute(v) if v >= 0.5);
+            if held {
+                self.adjust.insert(deck, edge);
+            } else {
+                self.adjust.remove(&deck);
+                self.nudge_accum.remove(&deck);
+            }
+            return None;
+        }
+        // While a deck's ADJ is held, its jog-bend becomes an accumulated
+        // quarter-beat nudge of the armed loop boundary.
+        if let Target::JogBend(deck) = raw.target {
+            if let (Some(&edge), ActionValue::Delta(ticks)) = (self.adjust.get(&deck), raw.value) {
+                return self.accumulate_nudge(deck, edge, ticks);
+            }
+        }
         let kind = raw.target.kind();
         if kind == Kind::Continuous {
             return Some(raw); // knobs/faders/jog/encoders pass through
@@ -245,6 +286,38 @@ impl ProfileDecoder {
         Some(ProfileAction {
             target: raw.target,
             value: ActionValue::Absolute(value),
+        })
+    }
+
+    /// Fold jog ticks into whole quarter-beat steps; emit a nudge when the
+    /// accumulator crosses the tick threshold, else `None`.
+    fn accumulate_nudge(
+        &mut self,
+        deck: Deck,
+        edge: LoopEdge,
+        ticks: i32,
+    ) -> Option<ProfileAction> {
+        let accum = self.nudge_accum.entry(deck).or_default();
+        *accum += ticks;
+        let mut steps = 0;
+        while *accum >= crate::jog::JOG_TICKS_PER_NUDGE {
+            *accum -= crate::jog::JOG_TICKS_PER_NUDGE;
+            steps += 1;
+        }
+        while *accum <= -crate::jog::JOG_TICKS_PER_NUDGE {
+            *accum += crate::jog::JOG_TICKS_PER_NUDGE;
+            steps -= 1;
+        }
+        if steps == 0 {
+            return None;
+        }
+        let target = match edge {
+            LoopEdge::In => Target::LoopNudgeIn(deck),
+            LoopEdge::Out => Target::LoopNudgeOut(deck),
+        };
+        Some(ProfileAction {
+            target,
+            value: ActionValue::Delta(steps),
         })
     }
 }
@@ -440,6 +513,80 @@ mod tests {
         assert_eq!(release.value, ActionValue::Absolute(0.0));
         // A repeated note-off (already up) emits nothing.
         assert!(d.decode(&note_off(0x97, 0x01)).is_none());
+    }
+
+    const NUDGE_SAMPLE: &str = r#"
+        Profile(
+            name: "Test", port_match: "test",
+            inputs: [
+                InputBinding(status: 0x90, data1: 0x4C, target: LoopInAdj(A)),
+                InputBinding(status: 0x90, data1: 0x4E, target: LoopOutAdj(A)),
+                InputBinding(status: 0x91, data1: 0x4C, target: LoopInAdj(B)),
+                InputBinding(status: 0xB0, data1: 0x21, target: JogBend(A), rel: Some(Centre64)),
+                InputBinding(status: 0xB1, data1: 0x21, target: JogBend(B), rel: Some(Centre64)),
+            ],
+        )
+    "#;
+    fn cc(status: u8, controller: u8, value: u8) -> MidiMessage {
+        MidiMessage::ControlChange {
+            channel: status & 0x0F,
+            controller,
+            value,
+        }
+    }
+
+    #[test]
+    fn jog_bend_passes_through_when_no_adjust_held() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(NUDGE_SAMPLE).unwrap());
+        let a = d.decode(&cc(0xB0, 0x21, 0x41)).unwrap();
+        assert_eq!(a.target, Target::JogBend(Deck::A));
+        assert_eq!(a.value, ActionValue::Delta(1));
+    }
+
+    #[test]
+    fn holding_in_adjust_reroutes_jog_to_accumulated_nudge() {
+        use crate::jog::JOG_TICKS_PER_NUDGE;
+        let mut d = ProfileDecoder::new(Profile::from_ron(NUDGE_SAMPLE).unwrap());
+        assert!(
+            d.decode(&note_on(0x90, 0x4C)).is_none(),
+            "ADJ press swallowed"
+        );
+        for _ in 0..(JOG_TICKS_PER_NUDGE - 1) {
+            assert!(
+                d.decode(&cc(0xB0, 0x21, 0x41)).is_none(),
+                "sub-threshold ticks accumulate silently"
+            );
+        }
+        let step = d.decode(&cc(0xB0, 0x21, 0x41)).unwrap();
+        assert_eq!(step.target, Target::LoopNudgeIn(Deck::A));
+        assert_eq!(step.value, ActionValue::Delta(1));
+        assert!(
+            d.decode(&note_off(0x90, 0x4C)).is_none(),
+            "ADJ release swallowed"
+        );
+        // Jog reverts to bending tempo once ADJ is released.
+        assert_eq!(
+            d.decode(&cc(0xB0, 0x21, 0x41)).unwrap().target,
+            Target::JogBend(Deck::A)
+        );
+    }
+
+    #[test]
+    fn out_adjust_reroutes_negative_direction_and_is_deck_isolated() {
+        use crate::jog::JOG_TICKS_PER_NUDGE;
+        let mut d = ProfileDecoder::new(Profile::from_ron(NUDGE_SAMPLE).unwrap());
+        d.decode(&note_on(0x90, 0x4E)); // hold OUT ADJ on deck A
+        for _ in 0..(JOG_TICKS_PER_NUDGE - 1) {
+            assert!(d.decode(&cc(0xB0, 0x21, 0x3F)).is_none());
+        }
+        let step = d.decode(&cc(0xB0, 0x21, 0x3F)).unwrap();
+        assert_eq!(step.target, Target::LoopNudgeOut(Deck::A));
+        assert_eq!(step.value, ActionValue::Delta(-1));
+        // Deck B jog is unaffected — no ADJ held there.
+        assert_eq!(
+            d.decode(&cc(0xB1, 0x21, 0x41)).unwrap().target,
+            Target::JogBend(Deck::B)
+        );
     }
 
     #[test]
