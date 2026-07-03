@@ -37,6 +37,8 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | 4 BEAT/EXIT | note `0x4D` (`0x90`) | button (shift: ACTIVE `0x50`) |
 | CUE/LOOP CALL ◄ / ► | note `0x51` / `0x53` (`0x90`) | button (shift: DEL `0x3E` / MEMORY `0x3D`) |
 | MASTER / BEAT SYNC | note `0x58` (`0x90`) | button (shift: TEMPO RANGE `0x60`) |
+| Beat-Loop pads 1–8 | notes `0x60–0x67` (status `0x97` A / `0x99` B; +shift `0x98`/`0x9A`) | button — saved-loop slots (SHIFT+pad = delete) |
+| Beat-Loop mode-select (SHIFT+BEAT JUMP) | note `0x6D` (`0x90`/`0x91`) | button + LED |
 | SHIFT | note `0x3F` (`0x90` left / `0x91` right) | modifier — hardware emits distinct notes for shifted buttons |
 | Hot-cue-mode pads 1–8 | notes `0x00–0x07` (status `0x97`; +shift `0x98`) | button |
 | Sampler-mode pads 1–8 | notes `0x30–0x37` (status `0x97`) | button — **repurposed**: top row `0x30–0x33` → stem **mute** 0–3, bottom `0x34–0x37` → stem **solo** 0–3 |

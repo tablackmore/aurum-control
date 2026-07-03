@@ -82,6 +82,31 @@ mod tests {
     }
 
     #[test]
+    fn flx4_decodes_beat_loop_pads() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Beat-Loop pad mode, captured live. Deck A pads = ch 7 (0x97), shift =
+        // ch 8 (0x98); deck B pads = ch 9 (0x99), shift = ch 10 (0x9A).
+        let cases = [
+            (7u8, 0x60u8, Target::LoopSlot(Deck::A, 0)),
+            (7, 0x67, Target::LoopSlot(Deck::A, 7)),
+            (8, 0x60, Target::LoopSlotDelete(Deck::A, 0)),
+            (8, 0x67, Target::LoopSlotDelete(Deck::A, 7)),
+            (9, 0x63, Target::LoopSlot(Deck::B, 3)),
+            (10, 0x60, Target::LoopSlotDelete(Deck::B, 0)),
+        ];
+        for (channel, note, want) in cases {
+            let a = p
+                .decode(&MidiMessage::NoteOn {
+                    channel,
+                    note,
+                    velocity: 127,
+                })
+                .unwrap_or_else(|| panic!("no binding for ch {channel} note {note:#04x}"));
+            assert_eq!(a.target, want, "ch {channel} note {note:#04x}");
+        }
+    }
+
+    #[test]
     fn flx4_decodes_loop_cluster_both_decks() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // (channel, note, expected target) — notes captured live off the unit.
