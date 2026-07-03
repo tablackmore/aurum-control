@@ -50,7 +50,9 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | Crossfader | CC `0x1F` (+LSB), `0xB6` | 14-bit |
 | **Master level rotary** | CC `0x08` (+`0x28` LSB), `0xB6` | 14-bit — captured live 2026-07-03 (Mixxx doesn't map it) |
 | Headphones mix | CC `0x0C` (+`0x2C` LSB), `0xB6` | 14-bit |
+| Headphones level | CC `0x0D` (+`0x2D` LSB), `0xB6` | 14-bit — captured live 2026-07-03 (it DOES send MIDI) |
 | Headphone-cue (PFL) 1 / 2 | note `0x54` (`0x90` / `0x91`) | button (LED echoes state) |
+| Master cue | note `0x63` (`0x96`) | button (LED echoes state) — routes master onto the phones CUE side |
 | **Jog touch** | note `0x36` (`0x90`) | button (on=touched) |
 | **Jog top / scratch** | CC `0x22` (`0xB0`) | **relative, centre 64** (`0x41`=+1, `0x3F`=−1) |
 | **Jog ring / pitch-bend** | CC `0x21` (`0xB0`) | relative, centre 64 |
@@ -70,6 +72,7 @@ browse encoder at 0. The profile must declare per-control encoding.
 | **VU meter — LEFT (deck 1)** | **CC `0x02`, ch 1 (`0xB0`)**, value `level×127` |
 | **VU meter — RIGHT (deck 2)** | **CC `0x02`, ch 2 (`0xB1`)**, value `level×127` |
 | Headphone-cue (PFL) LED | note `0x54` (`0x90` deck 1, `0x91` deck 2) |
+| Master-cue LED | note `0x63` (`0x96`) |
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
 | Pad-mode LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler) | notes `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90`/`0x91`) |
 | Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2); colour via velocity palette (TODO from Pioneer list) |

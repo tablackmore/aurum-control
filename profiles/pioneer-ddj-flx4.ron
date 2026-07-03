@@ -188,8 +188,14 @@ Profile(
         // (Mixxx doesn't map it; it does send MIDI. The knob is a digital encoder
         // into the app's master gain — it does NOT attenuate the master jacks.)
         InputBinding(status: 0xB6, data1: 0x08, target: Master,           hires: true),
+        // Headphone section — all addresses captured live 2026-07-03.
         // HEADPHONES MIX knob — blends cued decks vs master in the phones bus.
         InputBinding(status: 0xB6, data1: 0x0C, target: CueMix,           hires: true),
+        // HEADPHONES LEVEL knob — hi-res CC 0x0D (+0x2D LSB); phones volume.
+        InputBinding(status: 0xB6, data1: 0x0D, target: HeadphoneLevel,   hires: true),
+        // MASTER CUE button (note 0x63 on the library/mixer-button channel 7):
+        // toggles the master mix onto the CUE side of the phones blend.
+        InputBinding(status: 0x96, data1: 0x63, target: CueMaster),
         // CFX (colour FX) knobs — addresses confirmed live on hardware (ch 6)
         InputBinding(status: 0xB6, data1: 0x17, target: Filter(A),        hires: true),
         InputBinding(status: 0xB6, data1: 0x18, target: Filter(B),        hires: true),
@@ -214,6 +220,7 @@ Profile(
         FeedbackRule(source: DeckPlaying(B), status: 0x91, data1: 0x0B),
         FeedbackRule(source: DeckCued(A),    status: 0x90, data1: 0x54),
         FeedbackRule(source: DeckCued(B),    status: 0x91, data1: 0x54),
+        FeedbackRule(source: MasterCued,     status: 0x96, data1: 0x63),
         // Loop IN/OUT button LEDs — lit while a loop is active (both decks).
         FeedbackRule(source: LoopActive(A),  status: 0x90, data1: 0x10),
         FeedbackRule(source: LoopActive(A),  status: 0x90, data1: 0x11),
