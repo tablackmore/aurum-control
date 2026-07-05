@@ -188,8 +188,8 @@ pub enum Target {
     BeatRepeatRoll(Deck, f32),
     /// Performance FX: noise/riser build-up sweep (one-shot trigger).
     Riser(Deck),
-    /// Momentary pad FX (held): `u8` = the host's pad-FX preset id (the
-    /// audio-core `pad_fx::PRESETS` index — a cross-repo contract).
+    /// Momentary pad FX (held): `u8` = the host's pad-FX preset index
+    /// (a cross-repo contract with the host app's pad-FX preset table).
     PadFx(Deck, u8),
     /// Cycle the tempo-fader range (FLX4 shift + BEAT SYNC "TEMPO RANGE").
     /// UI-bound like the library targets: the range ladder is a frontend
@@ -235,8 +235,10 @@ impl Target {
             // JogTouch is momentary: the platter is "touched" while the top plate is
             // held and released on note-off. As a Toggle the release edge was dropped,
             // so `touched` stuck on and the deck stalled silent after a scratch.
+            // VinylBrake/BeatRepeatRoll are hold-to-engage the same way: the brake
+            // spins back up and the roll stops the moment the pad is released.
             HotCueHold(..) | JogTouch(_) | PadFx(..) | LoopInAdj(_) | LoopOutAdj(_)
-            | BeatFxAssign(_) => Kind::Momentary,
+            | BeatFxAssign(_) | VinylBrake(..) | BeatRepeatRoll(..) => Kind::Momentary,
             // LoopToggle/Sync flip engine-side state, so they fire per press like
             // a trigger — a mapping-side latch would go stale when the state
             // changes from the UI (or a sync follower swap / auto-mix).
@@ -249,8 +251,7 @@ impl Target {
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
             | FxSlotParam(..) | FxSlotDivision(..) | BeatFxLevel => Kind::Continuous,
-            DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) | VinylBrake(..)
-            | BeatRepeatRoll(..) => Kind::Toggle,
+            DrumPitchLock(_) | FxBusMute(_) | FxBusSolo(_) | FxSlotEnable(..) => Kind::Toggle,
             Riser(..) | BeatFxSelect(_) | BeatFxBeat(_) | BeatFxAuto | BeatFxTap | BeatFxOn
             | BeatFxRelease => Kind::Trigger,
         }
@@ -780,7 +781,7 @@ impl MidiMap {
                 controller,
                 value,
             } => {
-                let (logical, v) = decoder.feed(channel, controller, value);
+                let (logical, v) = decoder.feed(channel, controller, value)?;
                 (
                     ControlId::Cc {
                         channel: channel & 0x0F,
@@ -1288,8 +1289,8 @@ mod tests {
         assert_eq!(Target::FxSlotType(Deck::A, 0).kind(), Kind::Continuous);
         assert_eq!(Target::FxSlotParam(Deck::A, 0, 0).kind(), Kind::Continuous);
         assert_eq!(Target::FxSlotDivision(Deck::A, 0).kind(), Kind::Continuous);
-        assert_eq!(Target::VinylBrake(Deck::A).kind(), Kind::Toggle);
-        assert_eq!(Target::BeatRepeatRoll(Deck::A, 1.0).kind(), Kind::Toggle);
+        assert_eq!(Target::VinylBrake(Deck::A).kind(), Kind::Momentary);
+        assert_eq!(Target::BeatRepeatRoll(Deck::A, 1.0).kind(), Kind::Momentary);
         assert_eq!(Target::Riser(Deck::A).kind(), Kind::Trigger);
         assert_eq!(Target::PadFx(Deck::A, 3).kind(), Kind::Momentary);
         // label non-empty + contains deck tag
@@ -1303,6 +1304,24 @@ mod tests {
             assert!(Target::Riser(d).label().contains(tag));
             assert!(Target::PadFx(d, 0).label().contains(tag));
         }
+    }
+
+    #[test]
+    fn hires_pair_dispatches_once_per_movement() {
+        let (mut map, mut dec) = learn_cc(
+            Target::EqHigh(Deck::A),
+            Options::for_target(Target::EqHigh(Deck::A)),
+            10,
+        );
+        // First movement: the pair isn't known yet — MSB dispatches coarse,
+        // then the LSB refines it.
+        assert!(map.handle(cc(10, 100), &mut dec).is_some());
+        assert!(map.handle(cc(42, 50), &mut dec).is_some());
+        // Every later movement: the MSB is suppressed, only the LSB (carrying
+        // the full 14-bit value) dispatches — one action per knob movement.
+        assert!(map.handle(cc(10, 101), &mut dec).is_none());
+        let a = map.handle(cc(42, 60), &mut dec).expect("LSB dispatches");
+        assert_eq!(a.target, Target::EqHigh(Deck::A));
     }
 
     #[test]

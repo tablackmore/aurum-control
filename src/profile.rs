@@ -21,6 +21,9 @@ pub enum RelKind {
 impl RelKind {
     /// Decode a 7-bit relative value into a signed tick delta.
     pub fn delta(self, value: u8) -> i32 {
+        // Data bytes are 7-bit; mask a stray high bit so a malformed byte
+        // can't produce an outsized delta (mirrors `decode_relative`).
+        let value = value & 0x7F;
         match self {
             RelKind::Centre64 => value as i32 - 64,
             RelKind::Centre0 => {
@@ -434,6 +437,36 @@ mod tests {
         assert_eq!(RelKind::Centre64.delta(0x3F), -1);
         assert_eq!(RelKind::Centre0.delta(0x01), 1);
         assert_eq!(RelKind::Centre0.delta(0x7F), -1);
+        // A stray high bit in the value byte is masked, not amplified.
+        assert_eq!(RelKind::Centre64.delta(0xC1), 1);
+        assert_eq!(RelKind::Centre0.delta(0xFF), -1);
+    }
+
+    #[test]
+    fn decoder_roll_and_brake_are_momentary() {
+        let p = Profile::from_ron(
+            r#"Profile(
+                name: "t", port_match: "t",
+                inputs: [
+                    InputBinding(status: 0x97, data1: 0x10, target: BeatRepeatRoll(A, 1.0)),
+                    InputBinding(status: 0x97, data1: 0x13, target: VinylBrake(A)),
+                ],
+            )"#,
+        )
+        .unwrap();
+        let mut d = ProfileDecoder::new(p);
+        for note in [0x10u8, 0x13] {
+            let on = MidiMessage::NoteOn {
+                channel: 7,
+                note,
+                velocity: 127,
+            };
+            let off = MidiMessage::NoteOff { channel: 7, note };
+            assert_eq!(d.decode(&on).unwrap().value, ActionValue::Absolute(1.0));
+            // Release must stop the roll / spin the brake back up. As a Toggle
+            // this edge was dropped and the effect latched until a second press.
+            assert_eq!(d.decode(&off).unwrap().value, ActionValue::Absolute(0.0));
+        }
     }
 
     const DECODER_SAMPLE: &str = r#"

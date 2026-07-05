@@ -6,7 +6,8 @@
 // bindings only, both decks hand-expanded to concrete addresses.
 //
 // Deck channels: deck A = note 0x90 / CC 0xB0 / pads 0x97; deck B = 0x91 / 0xB1 / 0x99
-// (deck B mirrors A with the channel nibble +1). Browser/mixer = channel 6 (0xB6).
+// (deck B mirrors A with the channel nibble +1). Browser/mixer = channel 7 (0xB6/0x96
+// — status nibble 6; the docs count channels 1-based like the rest of this header).
 //
 // v1 limitations (deferred): hi-res knobs resolve at 7-bit (MSB only); the
 // browse/load and pad-mode/feedback controls are not bound here yet.
