@@ -793,4 +793,64 @@ mod tests {
         assert_eq!(off.target, Target::LoopToggle(Deck::A));
         assert_eq!(off.value, ActionValue::Absolute(0.0));
     }
+
+    // ─── JSON round-trip tests ───────────────────────────────────────────────
+
+    /// Worlde EasyControl.9: RON → to_json → from_json preserves name, input
+    /// count, and a sample binding's address + target.
+    #[test]
+    fn easycontrol9_json_round_trip() {
+        let orig = Profile::from_ron(WORLDE_EASYCONTROL_9).expect("builtin parses");
+        let json = orig.to_json().expect("serialises to JSON");
+        let restored = Profile::from_json(&json).expect("deserialises from JSON");
+
+        assert_eq!(restored.name, orig.name);
+        assert_eq!(restored.inputs.len(), orig.inputs.len());
+
+        // Check that the first input binding is faithfully preserved.
+        let ob = &orig.inputs[0];
+        let rb = &restored.inputs[0];
+        assert_eq!(rb.status, ob.status);
+        assert_eq!(rb.data1, ob.data1);
+        assert_eq!(rb.target, ob.target);
+    }
+
+    /// Pioneer DDJ-FLX4: exercises jog (rel), feedback rules, and hires fields.
+    #[test]
+    fn flx4_json_round_trip() {
+        let orig = Profile::from_ron(PIONEER_DDJ_FLX4).expect("builtin parses");
+        let json = orig.to_json().expect("serialises to JSON");
+        let restored = Profile::from_json(&json).expect("deserialises from JSON");
+
+        assert_eq!(restored.name, orig.name);
+        assert_eq!(restored.inputs.len(), orig.inputs.len());
+        assert_eq!(restored.feedback.len(), orig.feedback.len());
+
+        // Verify a sample binding: Deck A play (note 0x0B ch 0).
+        let ob = orig
+            .inputs
+            .iter()
+            .find(|b| b.status == 0x90 && b.data1 == 0x0B)
+            .expect("Play(A) binding must exist");
+        let rb = restored
+            .inputs
+            .iter()
+            .find(|b| b.status == 0x90 && b.data1 == 0x0B)
+            .expect("Play(A) binding must survive round-trip");
+        assert_eq!(rb.target, ob.target);
+
+        // Verify a relative binding: jog scratch (CC 0x22 ch 0, Centre64).
+        let jog_orig = orig
+            .inputs
+            .iter()
+            .find(|b| b.status == 0xB0 && b.data1 == 0x22)
+            .expect("JogScratch(A) binding must exist");
+        let jog_rest = restored
+            .inputs
+            .iter()
+            .find(|b| b.status == 0xB0 && b.data1 == 0x22)
+            .expect("JogScratch(A) binding must survive round-trip");
+        assert_eq!(jog_rest.rel, jog_orig.rel);
+        assert_eq!(jog_rest.target, jog_orig.target);
+    }
 }
