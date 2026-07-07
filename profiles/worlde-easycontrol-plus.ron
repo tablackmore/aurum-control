@@ -1,0 +1,98 @@
+// Worlde EasyControl Plus — runtime input profile.
+//
+// 24 knobs (3 rows × 8), 9 sliders (8 ch + 1 master), 16 buttons (mute + rec
+// rows, 4 per deck), 2 Bank L/R buttons. All plain CC + Note, MIDI ch 1, flat
+// (no banks, no SysEx, no channel_agnostic needed).
+//
+// Addresses captured live against real hardware; see
+// docs/devices/worlde-easycontrol-plus.md for the full protocol notes.
+//
+// Port name "WORLDE" collides with the EasyControl.9 — resolve by assigning
+// the profile explicitly via `AudioConfig::midi_profiles` (Phase 1 Task 2)
+// rather than relying on port-name auto-match alone.
+//
+// Row layout (all CC, ch 1):
+//   Knob row 1: CC 16 20 24 28  CC 46 50 54 58  → StemSend (FX send)
+//   Knob row 2: CC 17 21 25 29  CC 47 51 55 59  → EQ + Filter
+//   Knob row 3: CC 18 22 26 30  CC 48 52 56 60  → spare (unmapped)
+//   Sliders:    CC 19 23 27 31  CC 49 53 57 61  → StemVolume; CC 62 = Master
+//   Mute btns:  Note 2  5  8 11 Note 14 17 20 23 → StemMute (Toggle)
+//   Rec btns:   Note 3  6  9 12 Note 15 18 21 24 → StemSolo (Toggle)
+//   Bank L/R:   Note 25 / 26                     → LoadDeck A / B (Trigger)
+//
+// No feedback: the Plus has no addressable LEDs.
+Profile(
+    name: "Worlde EasyControl Plus",
+    port_match: "WORLDE",
+    // Flat — no banks, no SysEx.
+    inputs: [
+        // ─── Sliders: stem volumes + master ──────────────────────────────────
+        // Deck A stems (CC 19, 23, 27, 31)
+        InputBinding(status: 0xB0, data1: 19, target: StemVolume(A, 0)),
+        InputBinding(status: 0xB0, data1: 23, target: StemVolume(A, 1)),
+        InputBinding(status: 0xB0, data1: 27, target: StemVolume(A, 2)),
+        InputBinding(status: 0xB0, data1: 31, target: StemVolume(A, 3)),
+        // Deck B stems (CC 49, 53, 57, 61)
+        InputBinding(status: 0xB0, data1: 49, target: StemVolume(B, 0)),
+        InputBinding(status: 0xB0, data1: 53, target: StemVolume(B, 1)),
+        InputBinding(status: 0xB0, data1: 57, target: StemVolume(B, 2)),
+        InputBinding(status: 0xB0, data1: 61, target: StemVolume(B, 3)),
+        // Master slider (CC 62)
+        InputBinding(status: 0xB0, data1: 62, target: Master),
+
+        // ─── Knob row 1: stem FX sends ────────────────────────────────────────
+        // Deck A (CC 16, 20, 24, 28)
+        InputBinding(status: 0xB0, data1: 16, target: StemSend(A, 0)),
+        InputBinding(status: 0xB0, data1: 20, target: StemSend(A, 1)),
+        InputBinding(status: 0xB0, data1: 24, target: StemSend(A, 2)),
+        InputBinding(status: 0xB0, data1: 28, target: StemSend(A, 3)),
+        // Deck B (CC 46, 50, 54, 58)
+        InputBinding(status: 0xB0, data1: 46, target: StemSend(B, 0)),
+        InputBinding(status: 0xB0, data1: 50, target: StemSend(B, 1)),
+        InputBinding(status: 0xB0, data1: 54, target: StemSend(B, 2)),
+        InputBinding(status: 0xB0, data1: 58, target: StemSend(B, 3)),
+
+        // ─── Knob row 2: EQ + filter ─────────────────────────────────────────
+        // Deck A (CC 17→EqHigh, 21→EqMid, 25→EqLow, 29→Filter)
+        InputBinding(status: 0xB0, data1: 17, target: EqHigh(A)),
+        InputBinding(status: 0xB0, data1: 21, target: EqMid(A)),
+        InputBinding(status: 0xB0, data1: 25, target: EqLow(A)),
+        InputBinding(status: 0xB0, data1: 29, target: Filter(A)),
+        // Deck B (CC 47→EqHigh, 51→EqMid, 55→EqLow, 59→Filter)
+        InputBinding(status: 0xB0, data1: 47, target: EqHigh(B)),
+        InputBinding(status: 0xB0, data1: 51, target: EqMid(B)),
+        InputBinding(status: 0xB0, data1: 55, target: EqLow(B)),
+        InputBinding(status: 0xB0, data1: 59, target: Filter(B)),
+
+        // Knob row 3 (CC 18/22/26/30 deck A, 48/52/56/60 deck B): spare — unmapped.
+
+        // ─── Mute buttons: StemMute (Toggle) ─────────────────────────────────
+        // Deck A (notes 2, 5, 8, 11)
+        InputBinding(status: 0x90, data1: 2,  target: StemMute(A, 0)),
+        InputBinding(status: 0x90, data1: 5,  target: StemMute(A, 1)),
+        InputBinding(status: 0x90, data1: 8,  target: StemMute(A, 2)),
+        InputBinding(status: 0x90, data1: 11, target: StemMute(A, 3)),
+        // Deck B (notes 14, 17, 20, 23)
+        InputBinding(status: 0x90, data1: 14, target: StemMute(B, 0)),
+        InputBinding(status: 0x90, data1: 17, target: StemMute(B, 1)),
+        InputBinding(status: 0x90, data1: 20, target: StemMute(B, 2)),
+        InputBinding(status: 0x90, data1: 23, target: StemMute(B, 3)),
+
+        // ─── Rec buttons: StemSolo (Toggle) ──────────────────────────────────
+        // Deck A (notes 3, 6, 9, 12)
+        InputBinding(status: 0x90, data1: 3,  target: StemSolo(A, 0)),
+        InputBinding(status: 0x90, data1: 6,  target: StemSolo(A, 1)),
+        InputBinding(status: 0x90, data1: 9,  target: StemSolo(A, 2)),
+        InputBinding(status: 0x90, data1: 12, target: StemSolo(A, 3)),
+        // Deck B (notes 15, 18, 21, 24)
+        InputBinding(status: 0x90, data1: 15, target: StemSolo(B, 0)),
+        InputBinding(status: 0x90, data1: 18, target: StemSolo(B, 1)),
+        InputBinding(status: 0x90, data1: 21, target: StemSolo(B, 2)),
+        InputBinding(status: 0x90, data1: 24, target: StemSolo(B, 3)),
+
+        // ─── Bank L / R: load deck (Trigger) ─────────────────────────────────
+        InputBinding(status: 0x90, data1: 25, target: LoadDeck(A)),
+        InputBinding(status: 0x90, data1: 26, target: LoadDeck(B)),
+    ],
+    // No feedback: the Plus has no addressable LEDs.
+)

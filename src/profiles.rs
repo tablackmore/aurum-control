@@ -14,8 +14,26 @@ pub const WORLDE_EASYCONTROL_9: &str = include_str!("../profiles/worlde-easycont
 /// The M-Vave SMC-Mixer input profile RON (MCU mode), embedded at build time.
 pub const MVAVE_SMC_MIXER: &str = include_str!("../profiles/mvave-smc-mixer.ron");
 
+/// The Worlde EasyControl Plus input profile RON, embedded at build time.
+pub const WORLDE_EASYCONTROL_PLUS: &str = include_str!("../profiles/worlde-easycontrol-plus.ron");
+
 /// All bundled profile sources, in match-priority order.
-const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4, WORLDE_EASYCONTROL_9, MVAVE_SMC_MIXER];
+const BUILTINS: &[&str] = &[
+    PIONEER_DDJ_FLX4,
+    WORLDE_EASYCONTROL_9,
+    MVAVE_SMC_MIXER,
+    WORLDE_EASYCONTROL_PLUS,
+];
+
+/// Return the built-in profile whose `name` equals `name` (exact match). Lets the
+/// app pick a specific profile when port-name auto-match is ambiguous (e.g. two
+/// Worlde devices both advertising the same port prefix "WORLDE").
+pub fn builtin_by_name(name: &str) -> Option<Profile> {
+    BUILTINS.iter().find_map(|src| {
+        let p = Profile::from_ron(src).ok()?;
+        (p.name == name).then_some(p)
+    })
+}
 
 /// Parse and return the first built-in profile whose `port_match` matches the
 /// given MIDI input port name (case-insensitive substring). `None` if no
@@ -596,6 +614,72 @@ mod tests {
                 .target,
             Target::Crossfade
         );
+    }
+
+    // ─── builtin_by_name tests ───────────────────────────────────────────────
+
+    #[test]
+    fn builtin_by_name_returns_correct_profile() {
+        let p =
+            builtin_by_name("Worlde EasyControl Plus").expect("Plus profile must be found by name");
+        assert_eq!(p.name, "Worlde EasyControl Plus");
+        // Must NOT return the EC9 (different device, same port prefix).
+        assert_ne!(p.name, "Worlde EasyControl.9");
+    }
+
+    #[test]
+    fn builtin_by_name_returns_none_for_unknown() {
+        assert!(builtin_by_name("nope").is_none());
+    }
+
+    // ─── Worlde EasyControl Plus tests ───────────────────────────────────────
+
+    #[test]
+    fn easycontrol_plus_cc_slider_decodes_stem_volume() {
+        let p = builtin_by_name("Worlde EasyControl Plus").unwrap();
+        // CC 19 val 127 → StemVolume(A, 0) Absolute(1.0).
+        let a = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 19,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(a.target, Target::StemVolume(Deck::A, 0));
+        assert_eq!(a.value, ActionValue::Absolute(1.0));
+    }
+
+    #[test]
+    fn easycontrol_plus_mute_note_toggles_via_decoder() {
+        let p = builtin_by_name("Worlde EasyControl Plus").unwrap();
+        let mut d = ProfileDecoder::new(p);
+        // Note 2 press → StemMute(A, 0) Toggle on (1.0).
+        let on = d
+            .decode(&MidiMessage::NoteOn {
+                channel: 0,
+                note: 2,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(on.target, Target::StemMute(Deck::A, 0));
+        assert_eq!(on.value, ActionValue::Absolute(1.0));
+        // Release is swallowed by Toggle semantics.
+        assert!(d
+            .decode(&MidiMessage::NoteOff {
+                channel: 0,
+                note: 2,
+            })
+            .is_none());
+        // Second press → Toggle off (0.0).
+        let off = d
+            .decode(&MidiMessage::NoteOn {
+                channel: 0,
+                note: 2,
+                velocity: 127,
+            })
+            .unwrap();
+        assert_eq!(off.target, Target::StemMute(Deck::A, 0));
+        assert_eq!(off.value, ActionValue::Absolute(0.0));
     }
 
     // ─── M-Vave SMC-Mixer tests ──────────────────────────────────────────────
