@@ -45,7 +45,7 @@ impl Deck {
 }
 
 /// How a target reacts to incoming values — used to pick a sensible default mode.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
     /// 0..1 continuous parameter (knob/fader).
     Continuous,

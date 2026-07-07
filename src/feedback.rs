@@ -5,7 +5,7 @@
 //! value. The MIDI I/O and the polling loop live in the app.
 
 use crate::Deck;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Engine state the feedback renderer reads, in device-agnostic terms. The app
@@ -42,7 +42,7 @@ pub struct FeedbackState {
 }
 
 /// Which engine value a feedback rule reflects.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FeedbackSource {
     /// Continuous deck level → 7-bit (VU meter).
     DeckLevel(Deck),
@@ -75,7 +75,7 @@ pub enum FeedbackSource {
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
 /// (`status` byte + `data1`). Continuous sources send `value*127`; boolean
 /// sources send `0x7F`/`0x00`.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FeedbackRule {
     pub source: FeedbackSource,
     pub status: u8,

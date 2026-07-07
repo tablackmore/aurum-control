@@ -4,13 +4,13 @@
 
 use crate::feedback::{self, FeedbackRule, FeedbackState};
 use crate::{Deck, Kind, MidiMessage, Target};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// How a relative (endless-encoder) CC encodes its signed delta. The DDJ-FLX4
 /// alone uses both: its jog is centred at 64 (`0x41` = +1), its browse encoder
 /// at 0 (`0x01` = +1, `0x7F` = −1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelKind {
     /// Signed offset from 64: `value - 64`.
     Centre64,
@@ -49,7 +49,7 @@ impl RelKind {
 
 /// How this device announces the active bank over SysEx. `prefix` is matched at
 /// the start of the SysEx; the byte at `bank_index` is the (0-based) bank number.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BankSelect {
     pub prefix: Vec<u8>,
     pub bank_index: usize,
@@ -64,7 +64,7 @@ pub struct BankSelect {
 ///
 /// In both cases `prefix` must match the start of the incoming SysEx bytes, and
 /// all indices are guarded against `bytes.len()`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SysExBinding {
     pub prefix: Vec<u8>,
     /// Continuous: byte at this index → `Absolute(byte / 127.0)`.
@@ -81,7 +81,7 @@ pub struct SysExBinding {
 /// One input control → a [`Target`]. Concrete MIDI address (no deck templating):
 /// `status` is the channel-voice status byte (`0x90` note / `0xB0` CC), `data1`
 /// the note or controller number.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputBinding {
     pub status: u8,
     pub data1: u8,
@@ -114,7 +114,7 @@ pub struct InputBinding {
 }
 
 /// A controller mapping loaded from RON.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
     /// Case-insensitive substring matched against a MIDI input port name.
@@ -163,6 +163,16 @@ impl Profile {
     /// Parse a profile from RON source.
     pub fn from_ron(src: &str) -> Result<Self, ron::error::SpannedError> {
         ron::from_str(src)
+    }
+
+    /// Serialize this profile to pretty JSON (for a saved/shared device config).
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Parse a profile from JSON (a saved/shared device config).
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
     }
 
     /// Whether this profile should drive a MIDI port with the given name.
