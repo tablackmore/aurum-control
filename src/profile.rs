@@ -243,6 +243,8 @@ pub struct ProfileDecoder {
     nudge_accum: HashMap<Deck, i32>,
     /// Active bank index (0-based), updated by bank-select SysEx via `decode_bytes`.
     current_bank: u8,
+    /// Last Program Change value seen (for absolute→relative conversion).
+    last_program: Option<u8>,
 }
 
 impl ProfileDecoder {
@@ -254,6 +256,7 @@ impl ProfileDecoder {
             adjust: HashMap::new(),
             nudge_accum: HashMap::new(),
             current_bank: 0,
+            last_program: None,
         }
     }
 
@@ -279,6 +282,28 @@ impl ProfileDecoder {
                 self.current_bank = b;
             }
             return None; // other SysEx handled in A3
+        }
+        if let Some(&s) = bytes.first() {
+            if s & 0xF0 == 0xC0 {
+                let program = bytes.get(1).copied().unwrap_or(0) & 0x7F;
+                // Find a PC binding (status 0xC0) for the current bank.
+                let b = self.profile.inputs.iter().find(|b| {
+                    (b.status & 0xF0) == 0xC0
+                        && (b.bank.is_none() || b.bank == Some(self.current_bank))
+                })?;
+                let target = b.target;
+                let delta = match self.last_program.replace(program) {
+                    None => return None, // baseline, no jump
+                    Some(prev) => program as i32 - prev as i32,
+                };
+                if delta == 0 {
+                    return None;
+                }
+                return Some(ProfileAction {
+                    target,
+                    value: ActionValue::Delta(delta),
+                });
+            }
         }
         let msg = crate::parse(bytes)?;
         self.decode_msg(&msg)
@@ -723,6 +748,25 @@ mod tests {
         assert_eq!(
             d.decode_bytes(&[0xB0, 0x40, 127]).unwrap().target,
             Target::LoadDeck(Deck::A)
+        );
+    }
+
+    #[test]
+    fn program_change_browse_becomes_relative_scroll() {
+        let p = r#"Profile(name:"t", port_match:"t",
+            inputs: [ InputBinding(status: 0xC0, data1: 0, target: LibraryScroll, rel: Some(Centre0)) ])"#;
+        let mut d = ProfileDecoder::new(Profile::from_ron(p).unwrap());
+        // First PC establishes a baseline (no jump) → None.
+        assert!(d.decode_bytes(&[0xC0, 64]).is_none());
+        // Next PC higher → positive scroll delta.
+        assert_eq!(
+            d.decode_bytes(&[0xC0, 67]).unwrap().value,
+            ActionValue::Delta(3)
+        );
+        // Lower → negative.
+        assert_eq!(
+            d.decode_bytes(&[0xC0, 65]).unwrap().value,
+            ActionValue::Delta(-2)
         );
     }
 
