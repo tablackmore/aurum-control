@@ -595,24 +595,29 @@ mod tests {
         );
     }
 
-    /// Hardware-latching CC buttons in Bank 3 (Pad FX) bypass press-edge tracking:
-    /// CC 18 value 127 → Absolute(1.0), value 0 → Absolute(0.0) directly, without
-    /// needing a second physical press.
+    /// Hardware-latching CC buttons in Bank 2 (Loops) bypass press-edge tracking.
+    /// `LoopToggle` is `Kind::Trigger` — without `mode: Some(Continuous)` the
+    /// falling edge (value 0) would return `None`. With the override both edges
+    /// pass straight through as `Absolute(1.0)` / `Absolute(0.0)`.
+    ///
+    /// This test fails if `mode: Some(Continuous)` is removed from the Bank 2
+    /// CC 18 binding in the RON, proving the override is load-bearing.
     #[test]
     fn easycontrol9_latching_buttons_pass_through_directly() {
         let p = Profile::from_ron(WORLDE_EASYCONTROL_9).unwrap();
         let mut d = ProfileDecoder::new(p);
-        // Switch to bank 3 (Pad FX — hardware-latching CC).
+        // Switch to bank 2 (Loops — hardware-latching CC, Kind::Trigger without override).
         d.decode_bytes(&[
-            0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F, 0x03, 0xF7,
+            0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F, 0x02, 0xF7,
         ]);
-        // CC 18 value 127 → PadFx(A, 0) Absolute(1.0) directly.
+        // CC 18 value 127 → LoopToggle(A) Absolute(1.0).
         let on = d.decode_bytes(&[0xB0, 18, 127]).unwrap();
-        assert_eq!(on.target, Target::PadFx(Deck::A, 0));
+        assert_eq!(on.target, Target::LoopToggle(Deck::A));
         assert_eq!(on.value, ActionValue::Absolute(1.0));
-        // CC 18 value 0 → Absolute(0.0) directly (no second press needed).
+        // CC 18 value 0 → Absolute(0.0) directly.
+        // Without mode:Continuous this would be None (Trigger ignores the falling edge).
         let off = d.decode_bytes(&[0xB0, 18, 0]).unwrap();
-        assert_eq!(off.target, Target::PadFx(Deck::A, 0));
+        assert_eq!(off.target, Target::LoopToggle(Deck::A));
         assert_eq!(off.value, ActionValue::Absolute(0.0));
     }
 }

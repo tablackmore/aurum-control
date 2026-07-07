@@ -85,7 +85,7 @@ Profile(
         // ─── Global bindings (bank: None — active in every bank) ──────────────
         // Browse ("tone") knob — Program Change; absolute PC values converted to
         // relative delta by the decoder (first message establishes baseline).
-        InputBinding(status: 0xC0, data1: 0, target: LibraryScroll, rel: Some(Centre0)),
+        InputBinding(status: 0xC0, data1: 0, target: LibraryScroll),
         // Load buttons: CC 64 / CC 67 (momentary, global).
         InputBinding(status: 0xB0, data1: 64, target: LoadDeck(A)),
         InputBinding(status: 0xB0, data1: 67, target: LoadDeck(B)),

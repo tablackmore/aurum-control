@@ -162,18 +162,14 @@ impl Profile {
         feedback::render(&self.feedback, state)
     }
 
-    /// Resolve an incoming MIDI message to an action via this profile's bindings,
-    /// at a specific active bank. Note on/off → absolute 1.0/0.0; a relative-flagged
-    /// CC → a signed delta; any other CC → absolute `value/127`. `None` if nothing
-    /// binds the control at this bank.
-    ///
-    /// Bindings with `bank: None` match in every bank. If `channel_agnostic` is set,
-    /// only the status kind (`0xF0` nibble) and `data1` must match — the channel
-    /// nibble is ignored.
-    ///
-    /// (14-bit hi-res currently resolves at 7-bit from the MSB; the LSB CC simply
-    /// has no binding and is ignored — true 14-bit accumulation lands next.)
-    pub fn decode_at(&self, msg: &MidiMessage, bank: u8) -> Option<ProfileAction> {
+    /// Private: resolve a message at `bank`, returning both the decoded action
+    /// and the binding's `mode` override (if any). [`decode_at`](Self::decode_at)
+    /// is the public thin wrapper that discards the mode.
+    fn decode_at_with_mode(
+        &self,
+        msg: &MidiMessage,
+        bank: u8,
+    ) -> Option<(ProfileAction, Option<Kind>)> {
         // Reconstruct the (status, data1) the binding is written against.
         let (status, data1, cc): (u8, u8, Option<u8>) = match *msg {
             MidiMessage::NoteOn { channel, note, .. } => (0x90 | channel, note, None),
@@ -204,10 +200,29 @@ impl Profile {
                 ActionValue::Absolute(matches!(msg, MidiMessage::NoteOn { .. }) as u8 as f32)
             }
         };
-        Some(ProfileAction {
-            target: b.target,
-            value,
-        })
+        Some((
+            ProfileAction {
+                target: b.target,
+                value,
+            },
+            b.mode,
+        ))
+    }
+
+    /// Resolve an incoming MIDI message to an action via this profile's bindings,
+    /// at a specific active bank. Note on/off → absolute 1.0/0.0; a relative-flagged
+    /// CC → a signed delta; any other CC → absolute `value/127`. `None` if nothing
+    /// binds the control at this bank.
+    ///
+    /// Bindings with `bank: None` match in every bank. If `channel_agnostic` is set,
+    /// only the status kind (`0xF0` nibble) and `data1` must match — the channel
+    /// nibble is ignored.
+    ///
+    /// (14-bit hi-res currently resolves at 7-bit from the MSB; the LSB CC simply
+    /// has no binding and is ignored — true 14-bit accumulation lands next.)
+    pub fn decode_at(&self, msg: &MidiMessage, bank: u8) -> Option<ProfileAction> {
+        self.decode_at_with_mode(msg, bank)
+            .map(|(action, _)| action)
     }
 
     /// Resolve an incoming MIDI message at bank 0 (backwards-compatible convenience
@@ -369,32 +384,9 @@ impl ProfileDecoder {
         self.decode_msg(msg)
     }
 
-    /// Resolve the effective [`Kind`] for a message at the given bank: returns the
-    /// binding's `mode` override if set, otherwise `fallback` (the target's natural
-    /// kind). Used to implement per-binding mode overrides for hardware-latching CC
-    /// buttons (e.g. EasyControl.9 Banks 3/4 strip buttons with `mode: Some(Continuous)`).
-    fn effective_kind(&self, msg: &MidiMessage, bank: u8, fallback: Kind) -> Kind {
-        let Some((status, data1)) = msg_addr(msg) else {
-            return fallback;
-        };
-        self.profile
-            .inputs
-            .iter()
-            .find(|b| {
-                let addr_ok = if self.profile.channel_agnostic {
-                    (b.status & 0xF0) == (status & 0xF0) && b.data1 == data1
-                } else {
-                    b.status == status && b.data1 == data1
-                };
-                addr_ok && (b.bank.is_none() || b.bank == Some(bank))
-            })
-            .and_then(|b| b.mode)
-            .unwrap_or(fallback)
-    }
-
     /// Internal: apply Toggle/Trigger/Continuous semantics at the current bank.
     fn decode_msg(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
-        let raw = self.profile.decode_at(msg, self.current_bank)?;
+        let (raw, mode_override) = self.profile.decode_at_with_mode(msg, self.current_bank)?;
         // Loop-point adjust: holding IN/OUT ADJ arms this deck's jog to nudge a
         // loop boundary. Swallow the hold itself (the host never sees it).
         if let Some((deck, edge)) = loop_adjust_edge(raw.target) {
@@ -414,10 +406,11 @@ impl ProfileDecoder {
                 return self.accumulate_nudge(deck, edge, ticks);
             }
         }
-        // Effective kind: binding's mode override if set, else the target's natural kind.
-        // This lets hardware-latching CC buttons (e.g. EasyControl.9 Banks 3/4) use
-        // `mode: Some(Continuous)` so their 127/0 values pass through directly.
-        let kind = self.effective_kind(msg, self.current_bank, raw.target.kind());
+        // Effective kind: binding's mode override (threaded from decode_at_with_mode)
+        // if set, else the target's natural kind. This lets hardware-latching CC
+        // buttons (e.g. EasyControl.9 Banks 2/3) use `mode: Some(Continuous)` so
+        // their 127/0 values pass through directly.
+        let kind = mode_override.unwrap_or_else(|| raw.target.kind());
         if kind == Kind::Continuous {
             return Some(raw); // knobs/faders/jog/encoders pass through
         }
