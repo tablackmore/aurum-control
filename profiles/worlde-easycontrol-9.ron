@@ -1,0 +1,182 @@
+// Worlde EasyControl.9 — runtime input profile.
+//
+// 9 faders, 9 knobs, 9 strip buttons, 1 browse ("tone") knob, 1 crossfader,
+// 6 MMC transport buttons, 2 load buttons, 4 hardware banks.
+//
+// Addresses captured live against real hardware; see
+// docs/devices/worlde-easycontrol-9.md for the full protocol notes.
+//
+// Bank select: SysEx F0 42 40 00 01 04 00 5F 4F 0N F7, N at byte index 9.
+// Bank indices are 0-based: 0x00=Bank1 … 0x03=Bank4.
+//
+// Channel varies per bank (Bank 2 = channel 10, others channel 1) →
+// profile-level channel_agnostic: true — only the status kind nibble and
+// data1 are matched, the channel nibble is ignored.
+//
+// Strip buttons:
+//   Banks 1 & 2 (bank 0, 1) — momentary notes (36–44, 48–56).
+//   Banks 3 & 4 (bank 2, 3) — hardware-latching CC 18–26: click sends 127,
+//     next click sends 0. Bound with mode: Some(Continuous) so the raw 127/0
+//     passes straight through instead of being press-edge tracked.
+//
+// Ignored: the 2 buttons left of the bank selector send CC 1/2, which collide
+// with faders 2/3 (CC 1/2 in Bank 1) and are left unmapped.
+Profile(
+    name: "Worlde EasyControl.9",
+    port_match: "WORLDE",
+    channel_agnostic: true,
+    bank_select: Some(BankSelect(
+        prefix: [0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F],
+        bank_index: 9,
+    )),
+    // ─── SysEx input bindings ────────────────────────────────────────────────
+    sysex: [
+        // Crossfader: F0 7F 7F 04 01 00 <pos> F7, position at byte index 6 (0–127).
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x04, 0x01, 0x00],
+            value_index: Some(6),
+            target: Crossfade,
+        ),
+        // Transport MMC: F0 7F 7F 06 <cmd> F7, command at byte index 4.
+        // Stop  (01) → Play(A) — toggle play/pause deck A
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x01),
+            target: Play(A),
+        ),
+        // Play  (02) → Play(B) — toggle play/pause deck B
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x02),
+            target: Play(B),
+        ),
+        // Loop  (03) → LoopToggle(A)
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x03),
+            target: LoopToggle(A),
+        ),
+        // FF    (04) → LoopToggle(B)
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x04),
+            target: LoopToggle(B),
+        ),
+        // Rew   (05) → Sync(A)
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x05),
+            target: Sync(A),
+        ),
+        // Rec   (06) → Sync(B)
+        SysExBinding(
+            prefix: [0xF0, 0x7F, 0x7F, 0x06],
+            match_index: Some(4),
+            match_value: Some(0x06),
+            target: Sync(B),
+        ),
+    ],
+    inputs: [
+        // ─── Global bindings (bank: None — active in every bank) ──────────────
+        // Browse ("tone") knob — Program Change; absolute PC values converted to
+        // relative delta by the decoder (first message establishes baseline).
+        InputBinding(status: 0xC0, data1: 0, target: LibraryScroll, rel: Some(Centre0)),
+        // Load buttons: CC 64 / CC 67 (momentary, global).
+        InputBinding(status: 0xB0, data1: 64, target: LoadDeck(A)),
+        InputBinding(status: 0xB0, data1: 67, target: LoadDeck(B)),
+
+        // ─── Bank 0: Perf / Mixer ─────────────────────────────────────────────
+        // Faders 1–3: channel volumes + master.
+        InputBinding(status: 0xB0, data1: 0, target: ChannelVolume(A), bank: Some(0)),
+        InputBinding(status: 0xB0, data1: 1, target: ChannelVolume(B), bank: Some(0)),
+        InputBinding(status: 0xB0, data1: 2, target: Master,           bank: Some(0)),
+        // Faders 4–9 spare (CC 3–8).
+        // Knobs 1–2: colour filters.
+        InputBinding(status: 0xB0, data1: 9,  target: Filter(A), bank: Some(0)),
+        InputBinding(status: 0xB0, data1: 10, target: Filter(B), bank: Some(0)),
+        // Knobs 3–9 spare (CC 11–17).
+        // Strip buttons: momentary notes 36–43 → hot cues 1–4 for decks A and B.
+        InputBinding(status: 0x90, data1: 36, target: HotCue(A, 0), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 37, target: HotCue(A, 1), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 38, target: HotCue(A, 2), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 39, target: HotCue(A, 3), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 40, target: HotCue(B, 0), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 41, target: HotCue(B, 1), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 42, target: HotCue(B, 2), bank: Some(0)),
+        InputBinding(status: 0x90, data1: 43, target: HotCue(B, 3), bank: Some(0)),
+        // Button 9 (note 44) spare.
+
+        // ─── Bank 1: Stems ────────────────────────────────────────────────────
+        // Faders 1–8: stem volumes, deck A then deck B.
+        InputBinding(status: 0xB0, data1: 0, target: StemVolume(A, 0), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 1, target: StemVolume(A, 1), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 2, target: StemVolume(A, 2), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 3, target: StemVolume(A, 3), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 4, target: StemVolume(B, 0), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 5, target: StemVolume(B, 1), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 6, target: StemVolume(B, 2), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 7, target: StemVolume(B, 3), bank: Some(1)),
+        // Fader 9 spare (CC 8).
+        // Knobs 1–8: stem FX sends, deck A then deck B.
+        InputBinding(status: 0xB0, data1: 9,  target: StemSend(A, 0), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 10, target: StemSend(A, 1), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 11, target: StemSend(A, 2), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 12, target: StemSend(A, 3), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 13, target: StemSend(B, 0), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 14, target: StemSend(B, 1), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 15, target: StemSend(B, 2), bank: Some(1)),
+        InputBinding(status: 0xB0, data1: 16, target: StemSend(B, 3), bank: Some(1)),
+        // Knob 9 spare (CC 17).
+        // Strip buttons: momentary notes 48–55 → stem mutes, deck A then deck B.
+        InputBinding(status: 0x90, data1: 48, target: StemMute(A, 0), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 49, target: StemMute(A, 1), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 50, target: StemMute(A, 2), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 51, target: StemMute(A, 3), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 52, target: StemMute(B, 0), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 53, target: StemMute(B, 1), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 54, target: StemMute(B, 2), bank: Some(1)),
+        InputBinding(status: 0x90, data1: 55, target: StemMute(B, 3), bank: Some(1)),
+        // Button 9 (note 56) spare.
+
+        // ─── Bank 2: Loops ────────────────────────────────────────────────────
+        // Knobs 1–8: preset loop sizes for decks A and B. Turning a knob past 50%
+        // fires a LoopSet of the bound beat length (Trigger semantics).
+        InputBinding(status: 0xB0, data1: 9,  target: LoopSet(A, 1.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 10, target: LoopSet(A, 2.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 11, target: LoopSet(A, 4.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 12, target: LoopSet(A, 8.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 13, target: LoopSet(B, 1.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 14, target: LoopSet(B, 2.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 15, target: LoopSet(B, 4.0), bank: Some(2)),
+        InputBinding(status: 0xB0, data1: 16, target: LoopSet(B, 8.0), bank: Some(2)),
+        // Strip buttons: hardware-latching CC 18–25 (sends 127 on press, 0 on unpress).
+        // mode: Some(Continuous) — raw 127/0 passes through, no press-edge tracking.
+        InputBinding(status: 0xB0, data1: 18, target: LoopToggle(A), bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 19, target: LoopHalve(A),  bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 20, target: LoopDouble(A), bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 21, target: LoopReloop(A), bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 22, target: LoopToggle(B), bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 23, target: LoopHalve(B),  bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 24, target: LoopDouble(B), bank: Some(2), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 25, target: LoopReloop(B), bank: Some(2), mode: Some(Continuous)),
+        // Button 9 (CC 26) spare.
+
+        // ─── Bank 3: Pad FX ───────────────────────────────────────────────────
+        // Strip buttons: hardware-latching CC 18–25 → pad FX slots 0–3 for A and B.
+        // mode: Some(Continuous) — see Bank 2 note above.
+        InputBinding(status: 0xB0, data1: 18, target: PadFx(A, 0), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 19, target: PadFx(A, 1), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 20, target: PadFx(A, 2), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 21, target: PadFx(A, 3), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 22, target: PadFx(B, 0), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 23, target: PadFx(B, 1), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 24, target: PadFx(B, 2), bank: Some(3), mode: Some(Continuous)),
+        InputBinding(status: 0xB0, data1: 25, target: PadFx(B, 3), bank: Some(3), mode: Some(Continuous)),
+        // Button 9 (CC 26) spare.
+    ],
+)

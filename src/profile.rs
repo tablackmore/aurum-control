@@ -87,6 +87,13 @@ pub struct InputBinding {
     /// active bank and only matches bindings whose `bank` is `None` or equal.
     #[serde(default)]
     pub bank: Option<u8>,
+    /// Per-binding kind override. When set, this replaces the target's natural
+    /// [`Kind`] (from [`Target::kind`]) for decoder semantics. Use `Some(Continuous)`
+    /// for hardware-latching CC buttons (e.g. EasyControl.9 Banks 3/4 strip buttons)
+    /// so their raw 127/0 passes straight through instead of being treated as
+    /// momentary/toggle presses.
+    #[serde(default)]
+    pub mode: Option<Kind>,
 }
 
 /// A controller mapping loaded from RON.
@@ -362,6 +369,29 @@ impl ProfileDecoder {
         self.decode_msg(msg)
     }
 
+    /// Resolve the effective [`Kind`] for a message at the given bank: returns the
+    /// binding's `mode` override if set, otherwise `fallback` (the target's natural
+    /// kind). Used to implement per-binding mode overrides for hardware-latching CC
+    /// buttons (e.g. EasyControl.9 Banks 3/4 strip buttons with `mode: Some(Continuous)`).
+    fn effective_kind(&self, msg: &MidiMessage, bank: u8, fallback: Kind) -> Kind {
+        let Some((status, data1)) = msg_addr(msg) else {
+            return fallback;
+        };
+        self.profile
+            .inputs
+            .iter()
+            .find(|b| {
+                let addr_ok = if self.profile.channel_agnostic {
+                    (b.status & 0xF0) == (status & 0xF0) && b.data1 == data1
+                } else {
+                    b.status == status && b.data1 == data1
+                };
+                addr_ok && (b.bank.is_none() || b.bank == Some(bank))
+            })
+            .and_then(|b| b.mode)
+            .unwrap_or(fallback)
+    }
+
     /// Internal: apply Toggle/Trigger/Continuous semantics at the current bank.
     fn decode_msg(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
         let raw = self.profile.decode_at(msg, self.current_bank)?;
@@ -384,7 +414,10 @@ impl ProfileDecoder {
                 return self.accumulate_nudge(deck, edge, ticks);
             }
         }
-        let kind = raw.target.kind();
+        // Effective kind: binding's mode override if set, else the target's natural kind.
+        // This lets hardware-latching CC buttons (e.g. EasyControl.9 Banks 3/4) use
+        // `mode: Some(Continuous)` so their 127/0 values pass through directly.
+        let kind = self.effective_kind(msg, self.current_bank, raw.target.kind());
         if kind == Kind::Continuous {
             return Some(raw); // knobs/faders/jog/encoders pass through
         }

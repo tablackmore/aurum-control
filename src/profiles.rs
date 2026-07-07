@@ -8,8 +8,11 @@ use crate::Profile;
 /// The Pioneer DDJ-FLX4 input profile RON, embedded at build time.
 pub const PIONEER_DDJ_FLX4: &str = include_str!("../profiles/pioneer-ddj-flx4.ron");
 
+/// The Worlde EasyControl.9 input profile RON, embedded at build time.
+pub const WORLDE_EASYCONTROL_9: &str = include_str!("../profiles/worlde-easycontrol-9.ron");
+
 /// All bundled profile sources, in match-priority order.
-const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4];
+const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4, WORLDE_EASYCONTROL_9];
 
 /// Parse and return the first built-in profile whose `port_match` matches the
 /// given MIDI input port name (case-insensitive substring). `None` if no
@@ -25,7 +28,7 @@ pub fn builtin_for_port(port_name: &str) -> Option<Profile> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ActionValue, Deck, FeedbackSource, MidiMessage, Target};
+    use crate::{ActionValue, Deck, FeedbackSource, MidiMessage, Profile, ProfileDecoder, Target};
 
     fn flx4() -> crate::Profile {
         builtin_for_port("DDJ-FLX4").unwrap()
@@ -553,5 +556,63 @@ mod tests {
             .any(|r| matches!(r.source, FeedbackSource::BeatFxOn)
                 && r.status == 0x94
                 && r.data1 == 0x47));
+    }
+
+    // ─── Worlde EasyControl.9 tests ──────────────────────────────────────────
+
+    /// Resolves the correct target per bank, including bank-select SysEx switching,
+    /// channel-agnostic note/CC matching, and global SysEx bindings.
+    #[test]
+    fn easycontrol9_resolves_per_bank() {
+        let p = Profile::from_ron(WORLDE_EASYCONTROL_9).unwrap();
+        assert!(builtin_for_port("WORLDE").is_some());
+        let mut d = ProfileDecoder::new(p);
+        // Bank 0 default: fader 1 CC0 → ChannelVolume(A).
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 0, 127]).unwrap().target,
+            Target::ChannelVolume(Deck::A)
+        );
+        // Bank-select SysEx switches to bank 1 (Stems).
+        d.decode_bytes(&[
+            0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F, 0x01, 0xF7,
+        ]);
+        // Same CC0, now on channel 10 (0xB9) — channel-agnostic → StemVolume(A, 0).
+        assert_eq!(
+            d.decode_bytes(&[0xB9, 0, 127]).unwrap().target,
+            Target::StemVolume(Deck::A, 0)
+        );
+        // Bank 1 button note 48 on channel 10 (0x99) → StemMute(A, 0).
+        assert_eq!(
+            d.decode_bytes(&[0x99, 48, 127]).unwrap().target,
+            Target::StemMute(Deck::A, 0)
+        );
+        // Global crossfader SysEx works in any bank.
+        assert_eq!(
+            d.decode_bytes(&[0xF0, 0x7F, 0x7F, 0x04, 0x01, 0x00, 0x40, 0xF7])
+                .unwrap()
+                .target,
+            Target::Crossfade
+        );
+    }
+
+    /// Hardware-latching CC buttons in Bank 3 (Pad FX) bypass press-edge tracking:
+    /// CC 18 value 127 → Absolute(1.0), value 0 → Absolute(0.0) directly, without
+    /// needing a second physical press.
+    #[test]
+    fn easycontrol9_latching_buttons_pass_through_directly() {
+        let p = Profile::from_ron(WORLDE_EASYCONTROL_9).unwrap();
+        let mut d = ProfileDecoder::new(p);
+        // Switch to bank 3 (Pad FX — hardware-latching CC).
+        d.decode_bytes(&[
+            0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F, 0x03, 0xF7,
+        ]);
+        // CC 18 value 127 → PadFx(A, 0) Absolute(1.0) directly.
+        let on = d.decode_bytes(&[0xB0, 18, 127]).unwrap();
+        assert_eq!(on.target, Target::PadFx(Deck::A, 0));
+        assert_eq!(on.value, ActionValue::Absolute(1.0));
+        // CC 18 value 0 → Absolute(0.0) directly (no second press needed).
+        let off = d.decode_bytes(&[0xB0, 18, 0]).unwrap();
+        assert_eq!(off.target, Target::PadFx(Deck::A, 0));
+        assert_eq!(off.value, ActionValue::Absolute(0.0));
     }
 }
