@@ -37,6 +37,14 @@ impl RelKind {
     }
 }
 
+/// How this device announces the active bank over SysEx. `prefix` is matched at
+/// the start of the SysEx; the byte at `bank_index` is the (0-based) bank number.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BankSelect {
+    pub prefix: Vec<u8>,
+    pub bank_index: usize,
+}
+
 /// One input control → a [`Target`]. Concrete MIDI address (no deck templating):
 /// `status` is the channel-voice status byte (`0x90` note / `0xB0` CC), `data1`
 /// the note or controller number.
@@ -51,6 +59,11 @@ pub struct InputBinding {
     /// Set for endless encoders (jog, browse) — how to read the signed delta.
     #[serde(default)]
     pub rel: Option<RelKind>,
+    /// Bank this binding is active in (`None` = all banks). Devices with hardware
+    /// banks (Worlde EasyControl) send a bank-select SysEx; the decoder tracks the
+    /// active bank and only matches bindings whose `bank` is `None` or equal.
+    #[serde(default)]
+    pub bank: Option<u8>,
 }
 
 /// A controller mapping loaded from RON.
@@ -65,6 +78,13 @@ pub struct Profile {
     pub init: Vec<Vec<u8>>,
     #[serde(default)]
     pub inputs: Vec<InputBinding>,
+    /// Match CC/note by message kind + number, ignoring the channel nibble. For
+    /// devices that shift channel per bank (EasyControl.9 Bank 2 = ch 10).
+    #[serde(default)]
+    pub channel_agnostic: bool,
+    /// Bank-select SysEx pattern (drives the decoder's current bank). None = no banks.
+    #[serde(default)]
+    pub bank_select: Option<BankSelect>,
     /// LED/VU feedback rules — which engine value lights which control. Empty
     /// for input-only profiles.
     #[serde(default)]
@@ -109,13 +129,18 @@ impl Profile {
         feedback::render(&self.feedback, state)
     }
 
-    /// Resolve an incoming MIDI message to an action via this profile's bindings.
-    /// Note on/off → absolute 1.0/0.0; a relative-flagged CC → a signed delta;
-    /// any other CC → absolute `value/127`. `None` if nothing binds the control.
+    /// Resolve an incoming MIDI message to an action via this profile's bindings,
+    /// at a specific active bank. Note on/off → absolute 1.0/0.0; a relative-flagged
+    /// CC → a signed delta; any other CC → absolute `value/127`. `None` if nothing
+    /// binds the control at this bank.
+    ///
+    /// Bindings with `bank: None` match in every bank. If `channel_agnostic` is set,
+    /// only the status kind (`0xF0` nibble) and `data1` must match — the channel
+    /// nibble is ignored.
     ///
     /// (14-bit hi-res currently resolves at 7-bit from the MSB; the LSB CC simply
     /// has no binding and is ignored — true 14-bit accumulation lands next.)
-    pub fn decode(&self, msg: &MidiMessage) -> Option<ProfileAction> {
+    pub fn decode_at(&self, msg: &MidiMessage, bank: u8) -> Option<ProfileAction> {
         // Reconstruct the (status, data1) the binding is written against.
         let (status, data1, cc): (u8, u8, Option<u8>) = match *msg {
             MidiMessage::NoteOn { channel, note, .. } => (0x90 | channel, note, None),
@@ -127,10 +152,15 @@ impl Profile {
             } => (0xB0 | channel, controller, Some(value)),
             MidiMessage::Other => return None,
         };
-        let b = self
-            .inputs
-            .iter()
-            .find(|b| b.status == status && b.data1 == data1)?;
+        let is_match = |b: &InputBinding| {
+            let addr_ok = if self.channel_agnostic {
+                (b.status & 0xF0) == (status & 0xF0) && b.data1 == data1
+            } else {
+                b.status == status && b.data1 == data1
+            };
+            addr_ok && (b.bank.is_none() || b.bank == Some(bank))
+        };
+        let b = self.inputs.iter().find(|b| is_match(b))?;
         let value = match (cc, b.rel) {
             // CC with a relative encoding → signed delta.
             (Some(v), Some(kind)) => ActionValue::Delta(kind.delta(v)),
@@ -145,6 +175,12 @@ impl Profile {
             target: b.target,
             value,
         })
+    }
+
+    /// Resolve an incoming MIDI message at bank 0 (backwards-compatible convenience
+    /// wrapper around [`decode_at`](Self::decode_at)).
+    pub fn decode(&self, msg: &MidiMessage) -> Option<ProfileAction> {
+        self.decode_at(msg, 0)
     }
 }
 
@@ -205,6 +241,8 @@ pub struct ProfileDecoder {
     adjust: HashMap<Deck, LoopEdge>,
     /// Jog ticks accumulated toward the next quarter-beat nudge step, per deck.
     nudge_accum: HashMap<Deck, i32>,
+    /// Active bank index (0-based), updated by bank-select SysEx via `decode_bytes`.
+    current_bank: u8,
 }
 
 impl ProfileDecoder {
@@ -215,6 +253,7 @@ impl ProfileDecoder {
             buttons: HashMap::new(),
             adjust: HashMap::new(),
             nudge_accum: HashMap::new(),
+            current_bank: 0,
         }
     }
 
@@ -223,9 +262,36 @@ impl ProfileDecoder {
         &self.profile
     }
 
+    /// Decode raw MIDI bytes: recognise the bank-select SysEx (updates the current
+    /// bank, emits nothing) and otherwise fall back to channel-voice decoding at
+    /// the current bank. (A2 adds Program Change; A3 adds the other SysEx.)
+    pub fn decode_bytes(&mut self, bytes: &[u8]) -> Option<ProfileAction> {
+        if bytes.first() == Some(&0xF0) {
+            // Check for bank-select SysEx; extract the new bank before mutating.
+            let new_bank = self.profile.bank_select.as_ref().and_then(|bs| {
+                if bytes.len() > bs.bank_index && bytes.starts_with(&bs.prefix) {
+                    Some(bytes[bs.bank_index])
+                } else {
+                    None
+                }
+            });
+            if let Some(b) = new_bank {
+                self.current_bank = b;
+            }
+            return None; // other SysEx handled in A3
+        }
+        let msg = crate::parse(bytes)?;
+        self.decode_msg(&msg)
+    }
+
     /// Decode one message, applying Toggle/Trigger/Continuous semantics.
     pub fn decode(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
-        let raw = self.profile.decode(msg)?;
+        self.decode_msg(msg)
+    }
+
+    /// Internal: apply Toggle/Trigger/Continuous semantics at the current bank.
+    fn decode_msg(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
+        let raw = self.profile.decode_at(msg, self.current_bank)?;
         // Loop-point adjust: holding IN/OUT ADJ arms this deck's jog to nudge a
         // loop boundary. Swallow the hold itself (the host never sees it).
         if let Some((deck, edge)) = loop_adjust_edge(raw.target) {
@@ -619,6 +685,44 @@ mod tests {
         assert_eq!(
             d.decode(&cc(0xB1, 0x21, 0x41)).unwrap().target,
             Target::JogBend(Deck::B)
+        );
+    }
+
+    // Bank-aware, channel-agnostic decode: the SAME CC resolves to a different
+    // target per bank, and matches regardless of channel.
+    const BANKED: &str = r#"
+        Profile(
+            name: "t", port_match: "t",
+            channel_agnostic: true,
+            bank_select: Some(BankSelect(prefix: [0xF0,0x42,0x40,0x00,0x01,0x04,0x00,0x5F,0x4F], bank_index: 9)),
+            inputs: [
+                InputBinding(status: 0xB0, data1: 0x00, target: ChannelVolume(A), bank: Some(0)),
+                InputBinding(status: 0xB0, data1: 0x00, target: StemVolume(A, 0), bank: Some(1)),
+                InputBinding(status: 0xB0, data1: 0x40, target: LoadDeck(A)),  // global (bank: None)
+            ],
+        )
+    "#;
+
+    #[test]
+    fn bank_select_sysex_switches_resolution_channel_agnostic() {
+        let mut d = ProfileDecoder::new(Profile::from_ron(BANKED).unwrap());
+        // Default bank 0: CC0 (on ch 1) → ChannelVolume(A).
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 0x00, 127]).unwrap().target,
+            Target::ChannelVolume(Deck::A)
+        );
+        // Bank-select SysEx → bank 1; the SAME CC0, now on ch 10 (0xB9), → StemVolume(A,0).
+        assert!(d
+            .decode_bytes(&[0xF0, 0x42, 0x40, 0x00, 0x01, 0x04, 0x00, 0x5F, 0x4F, 0x01, 0xF7])
+            .is_none());
+        assert_eq!(
+            d.decode_bytes(&[0xB9, 0x00, 127]).unwrap().target,
+            Target::StemVolume(Deck::A, 0)
+        );
+        // Global binding (bank: None) resolves in any bank.
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 0x40, 127]).unwrap().target,
+            Target::LoadDeck(Deck::A)
         );
     }
 
