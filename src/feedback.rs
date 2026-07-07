@@ -156,14 +156,16 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                     }
                 }
                 FeedbackSource::StemMuted(d, s) => {
-                    if state.stem_muted[idx(d)][s as usize] {
+                    // Bounds guard: a malformed rule with s >= 4 returns off
+                    // rather than panicking (mirrors the SavedLoopSlot slot<8 guard).
+                    if (s as usize) < 4 && state.stem_muted[idx(d)][s as usize] {
                         0x7F
                     } else {
                         0x00
                     }
                 }
                 FeedbackSource::StemSoloed(d, s) => {
-                    if state.stem_soloed[idx(d)][s as usize] {
+                    if (s as usize) < 4 && state.stem_soloed[idx(d)][s as usize] {
                         0x7F
                     } else {
                         0x00

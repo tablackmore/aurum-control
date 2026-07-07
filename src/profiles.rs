@@ -11,8 +11,11 @@ pub const PIONEER_DDJ_FLX4: &str = include_str!("../profiles/pioneer-ddj-flx4.ro
 /// The Worlde EasyControl.9 input profile RON, embedded at build time.
 pub const WORLDE_EASYCONTROL_9: &str = include_str!("../profiles/worlde-easycontrol-9.ron");
 
+/// The M-Vave SMC-Mixer input profile RON (MCU mode), embedded at build time.
+pub const MVAVE_SMC_MIXER: &str = include_str!("../profiles/mvave-smc-mixer.ron");
+
 /// All bundled profile sources, in match-priority order.
-const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4, WORLDE_EASYCONTROL_9];
+const BUILTINS: &[&str] = &[PIONEER_DDJ_FLX4, WORLDE_EASYCONTROL_9, MVAVE_SMC_MIXER];
 
 /// Parse and return the first built-in profile whose `port_match` matches the
 /// given MIDI input port name (case-insensitive substring). `None` if no
@@ -592,6 +595,92 @@ mod tests {
                 .unwrap()
                 .target,
             Target::Crossfade
+        );
+    }
+
+    // ─── M-Vave SMC-Mixer tests ──────────────────────────────────────────────
+
+    /// Port matching: the Master port matches; the Private port must NOT.
+    /// `port_match: "SMC-Mixer-Master"` is a strict enough suffix to distinguish
+    /// the two ports the device exposes ("SINCO SMC-Mixer-Master" vs "-Private").
+    #[test]
+    fn mvave_smc_matches_master_port_not_private() {
+        assert!(builtin_for_port("SINCO SMC-Mixer-Master").is_some());
+        assert!(
+            builtin_for_port("SINCO SMC-Mixer-Private").is_none(),
+            "Private port must NOT match — port_match is SMC-Mixer-Master"
+        );
+    }
+
+    /// Decode tests: fader (pitch-bend), knob (SignBit accumulator), mute button.
+    #[test]
+    fn mvave_smc_decodes_fader_knob_mute() {
+        let p = builtin_for_port("SINCO SMC-Mixer-Master").unwrap();
+        let mut d = ProfileDecoder::new(p);
+
+        // Fader 1: pitch-bend E0, LSB=0, MSB=64 → StemVolume(A, 0) ≈ 0.5.
+        let fader = d.decode_bytes(&[0xE0, 0, 64]).unwrap();
+        assert_eq!(fader.target, Target::StemVolume(Deck::A, 0));
+        let fval = match fader.value {
+            ActionValue::Absolute(v) => v,
+            _ => panic!("expected Absolute"),
+        };
+        assert!(
+            (fval - 8192.0_f32 / 16383.0).abs() < 1e-4,
+            "fader midpoint mismatch: {fval}"
+        );
+
+        // Knob 1: CC 16, one +1 tick (0x01) → StemSend(A, 0) accumulates to 0.02.
+        let knob = d.decode_bytes(&[0xB0, 16, 0x01]).unwrap();
+        assert_eq!(knob.target, Target::StemSend(Deck::A, 0));
+        let kval = match knob.value {
+            ActionValue::Absolute(v) => v,
+            _ => panic!("expected Absolute"),
+        };
+        assert!(
+            (kval - 0.02_f32).abs() < 1e-6,
+            "knob accumulator mismatch: {kval}"
+        );
+
+        // Mute button 1: note 16 press → StemMute(A, 0) Toggle on (1.0).
+        let mute = d.decode_bytes(&[0x90, 16, 127]).unwrap();
+        assert_eq!(mute.target, Target::StemMute(Deck::A, 0));
+        assert_eq!(mute.value, ActionValue::Absolute(1.0));
+        // Release is swallowed by Toggle semantics.
+        assert!(d.decode_bytes(&[0x80, 16, 0]).is_none());
+        // Second press → Toggle off (0.0).
+        assert_eq!(
+            d.decode_bytes(&[0x90, 16, 127]).unwrap().value,
+            ActionValue::Absolute(0.0)
+        );
+    }
+
+    /// Feedback test: a FeedbackState with stem_muted[0][0]=true renders note-on 16.
+    #[test]
+    fn mvave_smc_feedback_stem_muted_renders_note_on_16() {
+        use crate::FeedbackState;
+        let p = builtin_for_port("SINCO SMC-Mixer-Master").unwrap();
+        let mut st = FeedbackState::default();
+        // Deck A stem 0 muted → mute LED note 16 must be full.
+        st.stem_muted[0][0] = true;
+        let frame = p.render_feedback(&st);
+        assert!(
+            frame.contains(&[0x90, 16, 0x7F]),
+            "muted stem should light note 16"
+        );
+        // Unmuted → note 16 off.
+        st.stem_muted[0][0] = false;
+        let frame = p.render_feedback(&st);
+        assert!(
+            frame.contains(&[0x90, 16, 0x00]),
+            "unmuted stem should darken note 16"
+        );
+        // Deck A stem 0 soloed → solo LED note 8 must be full.
+        st.stem_soloed[0][0] = true;
+        let frame = p.render_feedback(&st);
+        assert!(
+            frame.contains(&[0x90, 8, 0x7F]),
+            "soloed stem should light note 8"
         );
     }
 

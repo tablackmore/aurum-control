@@ -1,0 +1,132 @@
+// M-Vave SMC-Mixer — MCU stem mixer profile.
+//
+// The SMC-Mixer ships in Mackie/MCU mode by default.  This profile maps its
+// 8 faders, 8 V-pot knobs, and mute/solo button rows to a dedicated stem-mixer
+// surface for AURUM's two decks × 4 stems = 8 channels.
+//
+// Captured addresses:
+//   Port "SINCO SMC-Mixer-Master" (NOT "SMC-Mixer-Private" — the device exposes
+//   two ports; we bind the Master port only so the Private MIDI port is ignored).
+//
+// Layout:
+//   Faders 1-4   → StemVolume(A, 0..3)   (deck A: drums / bass / melody / vocal)
+//   Faders 5-8   → StemVolume(B, 0..3)   (deck B: drums / bass / melody / vocal)
+//   Knobs  1-4   → StemSend(A, 0..3)     (FX send, endless relative → absolute)
+//   Knobs  5-8   → StemSend(B, 0..3)
+//   Mute row     → StemMute(A/B, 0..3)   (toggle + LED feedback)
+//   Solo row     → StemSolo(A/B, 0..3)   (toggle + LED feedback)
+//
+// Fader encoding: 14-bit pitch-bend (LSB = byte[1], MSB = byte[2], ch = fader−1).
+//   value = (MSB<<7 | LSB) / 16383.  Channel is the fader identity — do NOT use
+//   channel_agnostic here.
+//
+// Knob encoding: sign-magnitude relative CC (MCU V-pot style, bit 6 = sign, low
+//   6 bits = magnitude): 0x01 = +1, 0x41 = −1, 0x43 = −3.  Accumulated to absolute
+//   at 0.02 per tick (50 ticks = full range).
+//
+// Transport choices (deliberate — documented here):
+//   Play (note 94) → Play(A): primary deck play/pause toggle.
+//   Stop (note 93) → Play(B): re-purposed as deck-B play/pause toggle.  "Stop" is
+//     the closest transport analogue to a second-deck control; a true engine Stop
+//     (vs. toggle-off) is not yet a target, so Play(B) is the most useful choice.
+//   Rew (91) / FF (92) / Rec (95) / Bank-/+ (46/47) / Nav (96-99) → unmapped.
+//   Select row (notes 24-31) / Rec row (notes 0-7) → unmapped (spare).
+//   Shift / pages (CC 20/59/60) — deferred: CC 20 collides with knob 5 in MCU mode.
+//
+// LEDs: MCU-symmetric — the device mirrors a button's own note-on (vel 127=on,
+//   0=off) to control its LED.  Mute LEDs = notes 16-23; Solo LEDs = notes 8-15.
+//   Feedback rules below drive those LEDs from engine stem_muted / stem_soloed.
+Profile(
+    name: "M-Vave SMC-Mixer",
+    // Substring match (case-insensitive) against the MIDI input port name.
+    // Matches "SINCO SMC-Mixer-Master" but NOT "SINCO SMC-Mixer-Private".
+    port_match: "SMC-Mixer-Master",
+    inputs: [
+        // ─── Faders 1–8: pitch-bend → stem volumes ───────────────────────────────
+        // Fader N uses pitch-bend channel N−1: status 0xE0|(N-1), data1: 0.
+        // Channel IS the fader identity (channel_agnostic not set).
+        // Deck A stems — faders 1-4 (pitch-bend channels 0-3):
+        InputBinding(status: 0xE0, data1: 0, target: StemVolume(A, 0)),  // fader 1 → drums
+        InputBinding(status: 0xE1, data1: 0, target: StemVolume(A, 1)),  // fader 2 → bass
+        InputBinding(status: 0xE2, data1: 0, target: StemVolume(A, 2)),  // fader 3 → melody
+        InputBinding(status: 0xE3, data1: 0, target: StemVolume(A, 3)),  // fader 4 → vocal
+        // Deck B stems — faders 5-8 (pitch-bend channels 4-7):
+        InputBinding(status: 0xE4, data1: 0, target: StemVolume(B, 0)),  // fader 5 → drums
+        InputBinding(status: 0xE5, data1: 0, target: StemVolume(B, 1)),  // fader 6 → bass
+        InputBinding(status: 0xE6, data1: 0, target: StemVolume(B, 2)),  // fader 7 → melody
+        InputBinding(status: 0xE7, data1: 0, target: StemVolume(B, 3)),  // fader 8 → vocal
+
+        // ─── Knobs 1–8: V-pot CC 16-23, sign-magnitude rel → absolute ────────────
+        // rel: Some(SignBit) — 0x01 = +1 tick, 0x41 = −1 tick (bit 6 sign).
+        // accum_step: Some(0.02) — each tick moves 2%; 50 ticks = full range.
+        // Deck A stems — knobs 1-4 (CC 16-19):
+        InputBinding(status: 0xB0, data1: 16, target: StemSend(A, 0), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 1
+        InputBinding(status: 0xB0, data1: 17, target: StemSend(A, 1), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 2
+        InputBinding(status: 0xB0, data1: 18, target: StemSend(A, 2), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 3
+        InputBinding(status: 0xB0, data1: 19, target: StemSend(A, 3), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 4
+        // Deck B stems — knobs 5-8 (CC 20-23):
+        // NB: CC 20 is the MCU Shift CC on some encoders — deferred/unmapped in Shift.
+        InputBinding(status: 0xB0, data1: 20, target: StemSend(B, 0), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 5
+        InputBinding(status: 0xB0, data1: 21, target: StemSend(B, 1), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 6
+        InputBinding(status: 0xB0, data1: 22, target: StemSend(B, 2), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 7
+        InputBinding(status: 0xB0, data1: 23, target: StemSend(B, 3), rel: Some(SignBit), accum_step: Some(0.02)),  // knob 8
+
+        // ─── Mute row: notes 16-23 → StemMute (Toggle) ───────────────────────────
+        // MCU mute buttons are momentary; the decoder's Toggle semantics latch them.
+        // Deck A stems — notes 16-19:
+        InputBinding(status: 0x90, data1: 16, target: StemMute(A, 0)),  // mute 1 → drums
+        InputBinding(status: 0x90, data1: 17, target: StemMute(A, 1)),  // mute 2 → bass
+        InputBinding(status: 0x90, data1: 18, target: StemMute(A, 2)),  // mute 3 → melody
+        InputBinding(status: 0x90, data1: 19, target: StemMute(A, 3)),  // mute 4 → vocal
+        // Deck B stems — notes 20-23:
+        InputBinding(status: 0x90, data1: 20, target: StemMute(B, 0)),  // mute 5 → drums
+        InputBinding(status: 0x90, data1: 21, target: StemMute(B, 1)),  // mute 6 → bass
+        InputBinding(status: 0x90, data1: 22, target: StemMute(B, 2)),  // mute 7 → melody
+        InputBinding(status: 0x90, data1: 23, target: StemMute(B, 3)),  // mute 8 → vocal
+
+        // ─── Solo row: notes 8-15 → StemSolo (Toggle) ────────────────────────────
+        // Deck A stems — notes 8-11:
+        InputBinding(status: 0x90, data1: 8,  target: StemSolo(A, 0)),  // solo 1 → drums
+        InputBinding(status: 0x90, data1: 9,  target: StemSolo(A, 1)),  // solo 2 → bass
+        InputBinding(status: 0x90, data1: 10, target: StemSolo(A, 2)),  // solo 3 → melody
+        InputBinding(status: 0x90, data1: 11, target: StemSolo(A, 3)),  // solo 4 → vocal
+        // Deck B stems — notes 12-15:
+        InputBinding(status: 0x90, data1: 12, target: StemSolo(B, 0)),  // solo 5 → drums
+        InputBinding(status: 0x90, data1: 13, target: StemSolo(B, 1)),  // solo 6 → bass
+        InputBinding(status: 0x90, data1: 14, target: StemSolo(B, 2)),  // solo 7 → melody
+        InputBinding(status: 0x90, data1: 15, target: StemSolo(B, 3)),  // solo 8 → vocal
+
+        // ─── Transport ───────────────────────────────────────────────────────────
+        // Play (note 94) → deck A play/pause toggle.
+        InputBinding(status: 0x90, data1: 94, target: Play(A)),
+        // Stop (note 93) → deck B play/pause toggle (re-purposed — see header).
+        InputBinding(status: 0x90, data1: 93, target: Play(B)),
+        // Rew (91), FF (92), Rec (95), Bank-/+ (46/47), Nav (96-99), Select row
+        // (notes 24-31), and Rec row (notes 0-7) are intentionally unmapped.
+    ],
+    // ─── Feedback: mute/solo LED state → note-on (MCU-symmetric) ──────────────
+    // The device lights a button LED by receiving its own note-on (vel 127=on,
+    // vel 0=off).  Rules below emit the button's note for every changed frame.
+    feedback: [
+        // Mute LED row — deck A stems (notes 16-19):
+        FeedbackRule(source: StemMuted(A, 0), status: 0x90, data1: 16),
+        FeedbackRule(source: StemMuted(A, 1), status: 0x90, data1: 17),
+        FeedbackRule(source: StemMuted(A, 2), status: 0x90, data1: 18),
+        FeedbackRule(source: StemMuted(A, 3), status: 0x90, data1: 19),
+        // Mute LED row — deck B stems (notes 20-23):
+        FeedbackRule(source: StemMuted(B, 0), status: 0x90, data1: 20),
+        FeedbackRule(source: StemMuted(B, 1), status: 0x90, data1: 21),
+        FeedbackRule(source: StemMuted(B, 2), status: 0x90, data1: 22),
+        FeedbackRule(source: StemMuted(B, 3), status: 0x90, data1: 23),
+        // Solo LED row — deck A stems (notes 8-11):
+        FeedbackRule(source: StemSoloed(A, 0), status: 0x90, data1: 8),
+        FeedbackRule(source: StemSoloed(A, 1), status: 0x90, data1: 9),
+        FeedbackRule(source: StemSoloed(A, 2), status: 0x90, data1: 10),
+        FeedbackRule(source: StemSoloed(A, 3), status: 0x90, data1: 11),
+        // Solo LED row — deck B stems (notes 12-15):
+        FeedbackRule(source: StemSoloed(B, 0), status: 0x90, data1: 12),
+        FeedbackRule(source: StemSoloed(B, 1), status: 0x90, data1: 13),
+        FeedbackRule(source: StemSoloed(B, 2), status: 0x90, data1: 14),
+        FeedbackRule(source: StemSoloed(B, 3), status: 0x90, data1: 15),
+    ],
+)
