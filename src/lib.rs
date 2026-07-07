@@ -32,7 +32,7 @@ pub mod feedback;
 pub use feedback::{FeedbackDiff, FeedbackRule, FeedbackSource, FeedbackState};
 
 pub mod profiles;
-pub use profiles::builtin_for_port;
+pub use profiles::{builtin_by_name, builtin_for_port};
 
 pub fn midi_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
