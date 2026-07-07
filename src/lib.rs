@@ -25,6 +25,7 @@ pub mod harness;
 mod profile;
 pub use profile::{
     ActionValue, BankSelect, InputBinding, Profile, ProfileAction, ProfileDecoder, RelKind,
+    SysExBinding,
 };
 
 pub mod feedback;

@@ -45,6 +45,29 @@ pub struct BankSelect {
     pub bank_index: usize,
 }
 
+/// One SysEx input binding. Two kinds:
+/// - **Value** (`value_index: Some(i)`): byte at `i` is a 0–127 position →
+///   `ActionValue::Absolute(byte / 127.0)`. Used for the EasyControl.9 crossfader.
+/// - **Match** (`match_index: Some(i)` + `match_value: Some(v)`): if the byte at
+///   `i` equals `v`, emits `ActionValue::Absolute(1.0)`. Used for MMC transport
+///   buttons.
+///
+/// In both cases `prefix` must match the start of the incoming SysEx bytes, and
+/// all indices are guarded against `bytes.len()`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SysExBinding {
+    pub prefix: Vec<u8>,
+    /// Continuous: byte at this index → `Absolute(byte / 127.0)`.
+    #[serde(default)]
+    pub value_index: Option<usize>,
+    /// Trigger: byte at this index must equal `match_value` → `Absolute(1.0)`.
+    #[serde(default)]
+    pub match_index: Option<usize>,
+    #[serde(default)]
+    pub match_value: Option<u8>,
+    pub target: Target,
+}
+
 /// One input control → a [`Target`]. Concrete MIDI address (no deck templating):
 /// `status` is the channel-voice status byte (`0x90` note / `0xB0` CC), `data1`
 /// the note or controller number.
@@ -85,6 +108,9 @@ pub struct Profile {
     /// Bank-select SysEx pattern (drives the decoder's current bank). None = no banks.
     #[serde(default)]
     pub bank_select: Option<BankSelect>,
+    /// SysEx input bindings: crossfader (value) and MMC transport (match).
+    #[serde(default)]
+    pub sysex: Vec<SysExBinding>,
     /// LED/VU feedback rules — which engine value lights which control. Empty
     /// for input-only profiles.
     #[serde(default)]
@@ -280,8 +306,30 @@ impl ProfileDecoder {
             });
             if let Some(b) = new_bank {
                 self.current_bank = b;
+                return None;
             }
-            return None; // other SysEx handled in A3
+            // SysEx input bindings: crossfader (value) and MMC transport (match).
+            for s in &self.profile.sysex {
+                if !bytes.starts_with(&s.prefix) {
+                    continue;
+                }
+                if let Some(i) = s.value_index {
+                    if i < bytes.len() {
+                        return Some(ProfileAction {
+                            target: s.target,
+                            value: ActionValue::Absolute(bytes[i] as f32 / 127.0),
+                        });
+                    }
+                } else if let (Some(i), Some(v)) = (s.match_index, s.match_value) {
+                    if i < bytes.len() && bytes[i] == v {
+                        return Some(ProfileAction {
+                            target: s.target,
+                            value: ActionValue::Absolute(1.0),
+                        });
+                    }
+                }
+            }
+            return None;
         }
         if let Some(&s) = bytes.first() {
             if s & 0xF0 == 0xC0 {
@@ -768,6 +816,28 @@ mod tests {
             d.decode_bytes(&[0xC0, 65]).unwrap().value,
             ActionValue::Delta(-2)
         );
+    }
+
+    #[test]
+    fn sysex_value_and_match_bindings() {
+        let p = r#"Profile(name:"t", port_match:"t",
+            sysex: [
+                SysExBinding(prefix: [0xF0,0x7F,0x7F,0x04,0x01,0x00], value_index: Some(6), target: Crossfade),
+                SysExBinding(prefix: [0xF0,0x7F,0x7F,0x06], match_index: Some(4), match_value: Some(0x02), target: Play(A)),
+            ])"#;
+        let mut d = ProfileDecoder::new(Profile::from_ron(p).unwrap());
+        // Crossfader position 0x40 → 64/127.
+        let x = d
+            .decode_bytes(&[0xF0, 0x7F, 0x7F, 0x04, 0x01, 0x00, 0x40, 0xF7])
+            .unwrap();
+        assert_eq!(x.target, Target::Crossfade);
+        assert_eq!(x.value, ActionValue::Absolute(64.0 / 127.0));
+        // Transport Play (MMC 0x02) → trigger 1.0.
+        let play = d
+            .decode_bytes(&[0xF0, 0x7F, 0x7F, 0x06, 0x02, 0xF7])
+            .unwrap();
+        assert_eq!(play.target, Target::Play(Deck::A));
+        assert_eq!(play.value, ActionValue::Absolute(1.0));
     }
 
     #[test]
