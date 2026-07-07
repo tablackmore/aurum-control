@@ -16,6 +16,9 @@ pub enum RelKind {
     Centre64,
     /// Two's-complement around 0: `1..=63` = +, `0x7F..=0x41` = − (`value` or `value - 128`).
     Centre0,
+    /// Sign-magnitude (MCU/Mackie V-pot style): bit 6 is the sign, low 6 bits are
+    /// the magnitude. `0x01` = +1, `0x41` = −1, `0x43` = −3.
+    SignBit,
 }
 
 impl RelKind {
@@ -31,6 +34,13 @@ impl RelKind {
                     value as i32
                 } else {
                     value as i32 - 128
+                }
+            }
+            RelKind::SignBit => {
+                if value & 0x40 != 0 {
+                    -((value & 0x3F) as i32)
+                } else {
+                    (value & 0x3F) as i32
                 }
             }
         }
@@ -94,6 +104,13 @@ pub struct InputBinding {
     /// momentary/toggle presses.
     #[serde(default)]
     pub mode: Option<Kind>,
+    /// Relative→absolute accumulator step. When set on a relative CC binding, the
+    /// decoder keeps a per-control `0..=1` f32 accumulator: each tick adds
+    /// `kind.delta(value) as f32 * accum_step`, clamped, and emits `Absolute`
+    /// instead of `Delta`. Used for endless knobs driving absolute targets (e.g.
+    /// M-Vave V-pots → stem FX send).
+    #[serde(default)]
+    pub accum_step: Option<f32>,
 }
 
 /// A controller mapping loaded from RON.
@@ -162,14 +179,14 @@ impl Profile {
         feedback::render(&self.feedback, state)
     }
 
-    /// Private: resolve a message at `bank`, returning both the decoded action
-    /// and the binding's `mode` override (if any). [`decode_at`](Self::decode_at)
-    /// is the public thin wrapper that discards the mode.
+    /// Private: resolve a message at `bank`, returning the decoded action, the
+    /// binding's `mode` override (if any), and the binding's `accum_step` (if any).
+    /// [`decode_at`](Self::decode_at) is the public thin wrapper that discards those.
     fn decode_at_with_mode(
         &self,
         msg: &MidiMessage,
         bank: u8,
-    ) -> Option<(ProfileAction, Option<Kind>)> {
+    ) -> Option<(ProfileAction, Option<Kind>, Option<f32>)> {
         // Reconstruct the (status, data1) the binding is written against.
         let (status, data1, cc): (u8, u8, Option<u8>) = match *msg {
             MidiMessage::NoteOn { channel, note, .. } => (0x90 | channel, note, None),
@@ -206,6 +223,7 @@ impl Profile {
                 value,
             },
             b.mode,
+            b.accum_step,
         ))
     }
 
@@ -222,7 +240,7 @@ impl Profile {
     /// has no binding and is ignored — true 14-bit accumulation lands next.)
     pub fn decode_at(&self, msg: &MidiMessage, bank: u8) -> Option<ProfileAction> {
         self.decode_at_with_mode(msg, bank)
-            .map(|(action, _)| action)
+            .map(|(action, _, _)| action)
     }
 
     /// Resolve an incoming MIDI message at bank 0 (backwards-compatible convenience
@@ -293,6 +311,9 @@ pub struct ProfileDecoder {
     current_bank: u8,
     /// Last Program Change value seen (for absolute→relative conversion).
     last_program: Option<u8>,
+    /// Per-control 0..=1 f32 accumulator for relative→absolute bindings
+    /// (`InputBinding::accum_step`). Keyed by (status, data1).
+    accum: HashMap<(u8, u8), f32>,
 }
 
 impl ProfileDecoder {
@@ -305,6 +326,7 @@ impl ProfileDecoder {
             nudge_accum: HashMap::new(),
             current_bank: 0,
             last_program: None,
+            accum: HashMap::new(),
         }
     }
 
@@ -375,6 +397,23 @@ impl ProfileDecoder {
                 });
             }
         }
+        // Pitch bend: status 0xE0–0xEF, 3 bytes (LSB, MSB). Channel encodes the
+        // fader index (fader 1 = ch 0 = 0xE0). Match exact status — do NOT apply
+        // channel_agnostic, because the channel IS the identity of the fader.
+        if bytes.len() >= 3 && bytes[0] & 0xF0 == 0xE0 {
+            let ch = bytes[0] & 0x0F;
+            let val = ((bytes[2] as u16) << 7 | bytes[1] as u16) as f32 / 16383.0;
+            let status_byte = 0xE0 | ch;
+            let b = self.profile.inputs.iter().find(|b| {
+                b.status == status_byte
+                    && b.data1 == 0
+                    && (b.bank.is_none() || b.bank == Some(self.current_bank))
+            })?;
+            return Some(ProfileAction {
+                target: b.target,
+                value: ActionValue::Absolute(val),
+            });
+        }
         let msg = crate::parse(bytes)?;
         self.decode_msg(&msg)
     }
@@ -386,7 +425,8 @@ impl ProfileDecoder {
 
     /// Internal: apply Toggle/Trigger/Continuous semantics at the current bank.
     fn decode_msg(&mut self, msg: &MidiMessage) -> Option<ProfileAction> {
-        let (raw, mode_override) = self.profile.decode_at_with_mode(msg, self.current_bank)?;
+        let (raw, mode_override, accum_step) =
+            self.profile.decode_at_with_mode(msg, self.current_bank)?;
         // Loop-point adjust: holding IN/OUT ADJ arms this deck's jog to nudge a
         // loop boundary. Swallow the hold itself (the host never sees it).
         if let Some((deck, edge)) = loop_adjust_edge(raw.target) {
@@ -405,6 +445,19 @@ impl ProfileDecoder {
             if let (Some(&edge), ActionValue::Delta(ticks)) = (self.adjust.get(&deck), raw.value) {
                 return self.accumulate_nudge(deck, edge, ticks);
             }
+        }
+        // Relative→absolute accumulator: if the binding has `accum_step`, fold the
+        // signed delta into a clamped 0..=1 per-control value and emit Absolute,
+        // bypassing the Toggle/Trigger/Continuous path entirely (these are encoders,
+        // not buttons).
+        if let (ActionValue::Delta(d), Some(step)) = (raw.value, accum_step) {
+            let addr = msg_addr(msg)?;
+            let a = self.accum.entry(addr).or_default();
+            *a = (*a + d as f32 * step).clamp(0.0, 1.0);
+            return Some(ProfileAction {
+                target: raw.target,
+                value: ActionValue::Absolute(*a),
+            });
         }
         // Effective kind: binding's mode override (threaded from decode_at_with_mode)
         // if set, else the target's natural kind. This lets hardware-latching CC
@@ -890,6 +943,51 @@ mod tests {
             .unwrap()
             .value,
             ActionValue::Delta(1)
+        );
+    }
+
+    #[test]
+    fn signbit_relkind_decodes() {
+        assert_eq!(RelKind::SignBit.delta(0x01), 1);
+        assert_eq!(RelKind::SignBit.delta(0x41), -1);
+        assert_eq!(RelKind::SignBit.delta(0x03), 3);
+        assert_eq!(RelKind::SignBit.delta(0x43), -3);
+    }
+
+    #[test]
+    fn pitchbend_signbit_and_accumulator() {
+        let p = r#"Profile(name:"t", port_match:"t",
+            inputs: [
+                InputBinding(status: 0xE0, data1: 0, target: StemVolume(A,0)),
+                InputBinding(status: 0xB0, data1: 16, target: StemSend(A,0), rel: Some(SignBit), accum_step: Some(0.1)),
+            ])"#;
+        let mut d = ProfileDecoder::new(Profile::from_ron(p).unwrap());
+        // Pitch bend E0, LSB=0 MSB=64 → ~0.5.
+        let f = d.decode_bytes(&[0xE0, 0, 64]).unwrap();
+        assert_eq!(f.target, Target::StemVolume(Deck::A, 0));
+        assert!(
+            (match f.value {
+                ActionValue::Absolute(v) => v,
+                _ => -1.0,
+            } - 8192.0 / 16383.0)
+                .abs()
+                < 1e-4
+        );
+        // Knob relative +1 (0x01) with accum_step 0.1: accumulator 0→0.1.
+        let k = d.decode_bytes(&[0xB0, 16, 0x01]).unwrap();
+        assert_eq!(k.value, ActionValue::Absolute(0.1));
+        // Another +1 → 0.2; a -1 (0x41) → 0.1.
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 16, 0x01]).unwrap().value,
+            ActionValue::Absolute(0.2)
+        );
+        assert!(
+            (match d.decode_bytes(&[0xB0, 16, 0x41]).unwrap().value {
+                ActionValue::Absolute(v) => v,
+                _ => -1.0,
+            } - 0.1)
+                .abs()
+                < 1e-6
         );
     }
 }

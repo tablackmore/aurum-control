@@ -33,6 +33,12 @@ pub struct FeedbackState {
     pub saved_loop_selected: [Option<u8>; 2],
     /// Beat FX ON/OFF engaged (drives the Beat FX ON/OFF button LED).
     pub beat_fx_on: bool,
+    /// Per-deck per-stem mute state (drives stem-mute button LEDs).
+    /// Index `[deck][stem]`: deck 0 = A, deck 1 = B; stem 0–3.
+    pub stem_muted: [[bool; 4]; 2],
+    /// Per-deck per-stem solo state (drives stem-solo button LEDs).
+    /// Index `[deck][stem]`: deck 0 = A, deck 1 = B; stem 0–3.
+    pub stem_soloed: [[bool; 4]; 2],
 }
 
 /// Which engine value a feedback rule reflects.
@@ -58,6 +64,12 @@ pub enum FeedbackSource {
     SavedLoopSlot(Deck, u8),
     /// Beat FX ON/OFF — on → full (0x7F), off → zero (LED).
     BeatFxOn,
+    /// Per-stem mute — on → full (`0x7F`), off → zero (mute button LED).
+    /// `(deck, stem_index)` where stem_index is 0–3.
+    StemMuted(Deck, u8),
+    /// Per-stem solo — on → full (`0x7F`), off → zero (solo button LED).
+    /// `(deck, stem_index)` where stem_index is 0–3.
+    StemSoloed(Deck, u8),
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -138,6 +150,22 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                 }
                 FeedbackSource::BeatFxOn => {
                     if state.beat_fx_on {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::StemMuted(d, s) => {
+                    // Bounds guard: a malformed rule with s >= 4 returns off
+                    // rather than panicking (mirrors the SavedLoopSlot slot<8 guard).
+                    if (s as usize) < 4 && state.stem_muted[idx(d)][s as usize] {
+                        0x7F
+                    } else {
+                        0x00
+                    }
+                }
+                FeedbackSource::StemSoloed(d, s) => {
+                    if (s as usize) < 4 && state.stem_soloed[idx(d)][s as usize] {
                         0x7F
                     } else {
                         0x00
@@ -313,6 +341,44 @@ mod tests {
         };
         let changed = diff.changed(&render(&rules(), &playing));
         assert_eq!(changed, vec![[0x90, 0x0B, 0x7F]]);
+    }
+
+    #[test]
+    fn stem_muted_led_renders_full_or_zero() {
+        let rules = [
+            FeedbackRule {
+                source: FeedbackSource::StemMuted(Deck::A, 0),
+                status: 0x90,
+                data1: 16,
+            },
+            FeedbackRule {
+                source: FeedbackSource::StemSoloed(Deck::A, 0),
+                status: 0x90,
+                data1: 8,
+            },
+        ];
+        // stem_muted[0][0] = true → note 16 full; StemSoloed false → note 8 off.
+        let mut st = FeedbackState::default();
+        st.stem_muted[0][0] = true;
+        let frame = render(&rules, &st);
+        assert_eq!(frame[0], [0x90, 16, 0x7F]);
+        assert_eq!(frame[1], [0x90, 8, 0x00]);
+        // Unmuted → note 16 off.
+        st.stem_muted[0][0] = false;
+        let frame = render(&rules, &st);
+        assert_eq!(frame[0], [0x90, 16, 0x00]);
+        // stem_soloed[0][0] = true → note 8 full.
+        st.stem_soloed[0][0] = true;
+        let frame = render(&rules, &st);
+        assert_eq!(frame[1], [0x90, 8, 0x7F]);
+        // Default state: both deck B stems default false.
+        let b_rule = FeedbackRule {
+            source: FeedbackSource::StemMuted(Deck::B, 3),
+            status: 0x90,
+            data1: 23,
+        };
+        let frame = render(&[b_rule], &FeedbackState::default());
+        assert_eq!(frame[0], [0x90, 23, 0x00]);
     }
 
     #[test]
