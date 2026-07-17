@@ -76,7 +76,7 @@ browse encoder at 0. The profile must declare per-control encoding.
 | Master-cue LED | note `0x63` (`0x96`) |
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
 | BEAT SYNC LED | note `0x58` (`0x90` deck 1, `0x91` deck 2) — assumed LED = input note (PLAY/CUE pattern); **not yet hardware-verified** |
-| Pad-mode cluster LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler + shift: Hot Cue/Pad FX2/Beat Loop/Sampler) | bright `0x7F` (selected) / dim `0x20` (available) at primary notes `0x1B`/`0x1E`/`0x20`/`0x22` and shift notes `0x69`/`0x6B`/`0x6D`/`0x6F` (`0x90` deck 1 / `0x91` deck 2) — primary addresses hardware-verified 2026-07-17; the shift addresses drive the shared lamp and the dim/bright lit-style there is still pending live confirmation |
+| Pad-mode cluster LEDs (4 buttons: Hot Cue/Pad FX1/Beat Jump/Sampler) | bright `0x7F` (selected family) / dim `0x20` (available) at the **4 primary notes** `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90` deck 1 / `0x91` deck 2) — all hardware-verified 2026-07-17. Shift variants share the primary's lamp (see below), so only the primary address is driven; a shift mode lights its primary lamp via `PadMode::same_button` |
 | Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2); colour via velocity palette (TODO from Pioneer list) |
 
 **⚠️ VU meters — Mixxx was right:** an earlier revision of this doc claimed both
@@ -90,8 +90,16 @@ deck's current level each tick.
 **Pad-mode LEDs are NOT hardware-managed** — unlike some Pioneer units, the FLX4
 does not keep only one lit on its own; the host must drive this explicitly:
 light the selected mode bright (`0x7F`) and every other mode in the cluster dim
-(`0x20`) on each pad-mode change (`aurum-control`'s `PadModeLed` feedback rules
-do this, one rule per mode per deck).
+(`0x20`) on each pad-mode change.
+
+**Shared lamps — confirmed 2026-07-17.** There are only **4 physical lamps** (one
+per button); each primary's shift variant shares its lamp — the shift addresses
+`0x69`/`0x6B`/`0x6D`/`0x6F` drive the **same** lamp as `0x1B`/`0x1E`/`0x20`/`0x22`.
+Driving both per frame fought last-write-wins and left the lamp dim (bright then
+dim to one lamp). So the host drives **only the 4 primary addresses**, one rule
+per button; `PadMode::same_button` lights a lamp bright when the selected mode is
+that button's primary **or** its shift variant. (Whether the shift address gives a
+distinct lit *style* was not needed — a solid family indication suffices.)
 
 ## AURUM integration notes
 

@@ -917,5 +917,30 @@ mod tests {
         // Deck B default Hot Cue → Hot Cue bright, Sampler dim.
         assert!(frame.contains(&[0x91, 0x1B, 0x7F]));
         assert!(frame.contains(&[0x91, 0x22, 0x20]));
+        // Shift addresses share the primary lamp, so they must NOT be driven
+        // (driving both fought last-write-wins and left the lamp dim).
+        for note in [0x69, 0x6B, 0x6D, 0x6F] {
+            assert!(
+                !frame.iter().any(|m| m[1] == note),
+                "shift LED address {note:#x} must not be emitted"
+            );
+        }
+    }
+
+    #[test]
+    fn flx4_shift_pad_mode_lights_primary_lamp() {
+        use crate::{FeedbackState, PadMode};
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        // Deck A in Beat-Loop (shift of Beat Jump) → Beat Jump button bright.
+        let state = FeedbackState {
+            pad_mode: [PadMode::BeatLoop, PadMode::HotCue],
+            ..Default::default()
+        };
+        let frame = p.render_feedback(&state);
+        assert!(
+            frame.contains(&[0x90, 0x20, 0x7F]),
+            "Beat Jump lamp bright in Beat-Loop"
+        );
+        assert!(frame.contains(&[0x90, 0x1B, 0x20]), "Hot Cue dim");
     }
 }

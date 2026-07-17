@@ -304,24 +304,20 @@ Profile(
         // Beat FX ON/OFF LED — echoes the input address (standard Pioneer pattern).
         FeedbackRule(source: BeatFxOn, status: 0x94, data1: 0x47),
 
-        // Pad-mode cluster LEDs — bright (0x7F) selected / dim (0x20) available.
-        // Primary addresses hardware-verified 2026-07-17; the shift addresses
-        // (0x69/0x6B/0x6D/0x6F) drive the shared lamp — verify the lit style live.
-        FeedbackRule(source: PadModeLed(A, HotCue),       status: 0x90, data1: 0x1B),
-        FeedbackRule(source: PadModeLed(A, HotCueShift),  status: 0x90, data1: 0x69),
-        FeedbackRule(source: PadModeLed(A, PadFx1),       status: 0x90, data1: 0x1E),
-        FeedbackRule(source: PadModeLed(A, PadFx2),       status: 0x90, data1: 0x6B),
-        FeedbackRule(source: PadModeLed(A, BeatJump),     status: 0x90, data1: 0x20),
-        FeedbackRule(source: PadModeLed(A, BeatLoop),     status: 0x90, data1: 0x6D),
-        FeedbackRule(source: PadModeLed(A, Sampler),      status: 0x90, data1: 0x22),
-        FeedbackRule(source: PadModeLed(A, SamplerShift), status: 0x90, data1: 0x6F),
-        FeedbackRule(source: PadModeLed(B, HotCue),       status: 0x91, data1: 0x1B),
-        FeedbackRule(source: PadModeLed(B, HotCueShift),  status: 0x91, data1: 0x69),
-        FeedbackRule(source: PadModeLed(B, PadFx1),       status: 0x91, data1: 0x1E),
-        FeedbackRule(source: PadModeLed(B, PadFx2),       status: 0x91, data1: 0x6B),
-        FeedbackRule(source: PadModeLed(B, BeatJump),     status: 0x91, data1: 0x20),
-        FeedbackRule(source: PadModeLed(B, BeatLoop),     status: 0x91, data1: 0x6D),
-        FeedbackRule(source: PadModeLed(B, Sampler),      status: 0x91, data1: 0x22),
-        FeedbackRule(source: PadModeLed(B, SamplerShift), status: 0x91, data1: 0x6F),
+        // Pad-mode cluster LEDs — one rule per physical button (4 lamps), bright
+        // (0x7F) when the selected mode is in that button's family, else dim
+        // (0x20). Hardware-confirmed 2026-07-17: each primary shares its lamp
+        // with its shift variant (0x69/0x6B/0x6D/0x6F address the SAME lamp as
+        // 0x1B/0x1E/0x20/0x22). Driving both fought last-write-wins and left the
+        // lamp dim, so we drive only the primary address; `PadMode::same_button`
+        // lights it for the primary OR the shift mode.
+        FeedbackRule(source: PadModeLed(A, HotCue),   status: 0x90, data1: 0x1B),
+        FeedbackRule(source: PadModeLed(A, PadFx1),   status: 0x90, data1: 0x1E),
+        FeedbackRule(source: PadModeLed(A, BeatJump), status: 0x90, data1: 0x20),
+        FeedbackRule(source: PadModeLed(A, Sampler),  status: 0x90, data1: 0x22),
+        FeedbackRule(source: PadModeLed(B, HotCue),   status: 0x91, data1: 0x1B),
+        FeedbackRule(source: PadModeLed(B, PadFx1),   status: 0x91, data1: 0x1E),
+        FeedbackRule(source: PadModeLed(B, BeatJump), status: 0x91, data1: 0x20),
+        FeedbackRule(source: PadModeLed(B, Sampler),  status: 0x91, data1: 0x22),
     ],
 )
