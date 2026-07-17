@@ -335,6 +335,24 @@ mod tests {
     }
 
     #[test]
+    fn flx4_feedback_renders_hot_cue_pads() {
+        use crate::{FeedbackState, LedColor};
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let mut state = FeedbackState::default();
+        state.hot_cue[0][0] = Some(LedColor::Red); // deck A slot 1 set
+        state.hot_cue[1][7] = Some(LedColor::Blue); // deck B slot 8 set
+        let frame = p.render_feedback(&state);
+        // Set slots light (bright, no FLX4 palette yet); empty slots off.
+        // Hot-cue pad addresses mirror the HotCueHold input range (0x00-0x07 on
+        // the deck's pad channel), same as every other feedback rule in this
+        // profile echoes its input's address — NOT the 0x60-0x67 Beat-Loop
+        // range (that's a different pad mode / SavedLoopSlot).
+        assert!(frame.contains(&[0x97, 0x00, 0x7F]));
+        assert!(frame.contains(&[0x97, 0x01, 0x00]));
+        assert!(frame.contains(&[0x99, 0x07, 0x7F]));
+    }
+
+    #[test]
     fn flx4_decodes_headphone_cue_buttons_and_mix_knob() {
         let p = builtin_for_port("DDJ-FLX4").unwrap();
         // Headphone-cue (PFL) buttons: note 0x54 on the deck channel → CueMonitor.

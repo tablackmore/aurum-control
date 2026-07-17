@@ -301,6 +301,24 @@ Profile(
         FeedbackRule(source: SavedLoopSlot(B, 5), status: 0x99, data1: 0x65),
         FeedbackRule(source: SavedLoopSlot(B, 6), status: 0x99, data1: 0x66),
         FeedbackRule(source: SavedLoopSlot(B, 7), status: 0x99, data1: 0x67),
+        // Hot-cue pad LEDs — off (empty) / colour (set). RGB pads: colour via the
+        // profile palette below (monochrome-bright until the palette is filled).
+        FeedbackRule(source: HotCueSlot(A, 0), status: 0x97, data1: 0x00),
+        FeedbackRule(source: HotCueSlot(A, 1), status: 0x97, data1: 0x01),
+        FeedbackRule(source: HotCueSlot(A, 2), status: 0x97, data1: 0x02),
+        FeedbackRule(source: HotCueSlot(A, 3), status: 0x97, data1: 0x03),
+        FeedbackRule(source: HotCueSlot(A, 4), status: 0x97, data1: 0x04),
+        FeedbackRule(source: HotCueSlot(A, 5), status: 0x97, data1: 0x05),
+        FeedbackRule(source: HotCueSlot(A, 6), status: 0x97, data1: 0x06),
+        FeedbackRule(source: HotCueSlot(A, 7), status: 0x97, data1: 0x07),
+        FeedbackRule(source: HotCueSlot(B, 0), status: 0x99, data1: 0x00),
+        FeedbackRule(source: HotCueSlot(B, 1), status: 0x99, data1: 0x01),
+        FeedbackRule(source: HotCueSlot(B, 2), status: 0x99, data1: 0x02),
+        FeedbackRule(source: HotCueSlot(B, 3), status: 0x99, data1: 0x03),
+        FeedbackRule(source: HotCueSlot(B, 4), status: 0x99, data1: 0x04),
+        FeedbackRule(source: HotCueSlot(B, 5), status: 0x99, data1: 0x05),
+        FeedbackRule(source: HotCueSlot(B, 6), status: 0x99, data1: 0x06),
+        FeedbackRule(source: HotCueSlot(B, 7), status: 0x99, data1: 0x07),
         // Beat FX ON/OFF LED — echoes the input address (standard Pioneer pattern).
         FeedbackRule(source: BeatFxOn, status: 0x94, data1: 0x47),
 
