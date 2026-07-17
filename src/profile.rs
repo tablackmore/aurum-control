@@ -139,6 +139,11 @@ pub struct Profile {
     /// for input-only profiles.
     #[serde(default)]
     pub feedback: Vec<FeedbackRule>,
+    /// Optional colour palette: maps a [`LedColor`](crate::LedColor) to the
+    /// device's velocity for colour-capable feedback (hot-cue pads). Empty =
+    /// monochrome (any colour → bright).
+    #[serde(default)]
+    pub palette: Vec<(crate::LedColor, u8)>,
 }
 
 /// The decoded result of one input message: which [`Target`], and the value to
@@ -186,7 +191,7 @@ impl Profile {
     /// the 3-byte MIDI messages to send (one per rule). The app diffs successive
     /// frames (via [`feedback::FeedbackDiff`]) and owns the MIDI output.
     pub fn render_feedback(&self, state: &FeedbackState) -> Vec<[u8; 3]> {
-        feedback::render(&self.feedback, state)
+        feedback::render_with_palette(&self.feedback, state, &self.palette)
     }
 
     /// Private: resolve a message at `bank`, returning the decoded action, the
