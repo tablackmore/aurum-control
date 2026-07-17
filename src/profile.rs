@@ -394,9 +394,10 @@ impl ProfileDecoder {
                         && (b.bank.is_none() || b.bank == Some(self.current_bank))
                 })?;
                 let target = b.target;
-                let delta = match self.last_program.replace(program) {
-                    None => return None, // baseline, no jump
-                    Some(prev) => program as i32 - prev as i32,
+                let delta = {
+                    // baseline (no prior program) → no jump
+                    let prev = self.last_program.replace(program)?;
+                    program as i32 - prev as i32
                 };
                 if delta == 0 {
                     return None;
