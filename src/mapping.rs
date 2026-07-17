@@ -60,6 +60,28 @@ pub enum PadMode {
     SamplerShift,
 }
 
+impl PadMode {
+    /// The FLX4 has 4 physical pad-mode buttons, and each primary mode shares
+    /// its button's lamp with its shift variant (Pad FX1/Pad FX2 are one lamp,
+    /// Beat Jump/Beat-Loop are one lamp, etc. — hardware-confirmed 2026-07-17).
+    /// So a lamp lights for a *family* of two modes, not a single mode.
+    fn button(self) -> u8 {
+        use PadMode::*;
+        match self {
+            HotCue | HotCueShift => 0,
+            PadFx1 | PadFx2 => 1,
+            BeatJump | BeatLoop => 2,
+            Sampler | SamplerShift => 3,
+        }
+    }
+
+    /// Whether these two modes share the same physical button lamp — i.e. a
+    /// primary and its shift variant.
+    pub fn same_button(self, other: PadMode) -> bool {
+        self.button() == other.button()
+    }
+}
+
 /// How a target reacts to incoming values — used to pick a sensible default mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {

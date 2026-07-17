@@ -67,9 +67,10 @@ pub enum FeedbackSource {
     SavedLoopSlot(Deck, u8),
     /// Beat FX ON/OFF — on → full (0x7F), off → zero (LED).
     BeatFxOn,
-    /// Pad-mode selector LED (FLX4 mode cluster): bright (`0x7F`) when this mode
-    /// is the deck's selected pad mode, dim (`0x20`) otherwise. The unselected
-    /// buttons stay dimly lit on the hardware, never fully off.
+    /// Pad-mode selector LED (FLX4 mode cluster): bright (`0x7F`) when the deck's
+    /// selected pad mode shares this button's lamp (primary OR its shift variant,
+    /// via [`PadMode::same_button`]), dim (`0x20`) otherwise. One rule per
+    /// physical button; the unselected buttons stay dimly lit, never fully off.
     PadModeLed(Deck, PadMode),
     /// Per-stem mute — on → full (`0x7F`), off → zero (mute button LED).
     /// `(deck, stem_index)` where stem_index is 0–3.
@@ -163,7 +164,11 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                     }
                 }
                 FeedbackSource::PadModeLed(d, mode) => {
-                    if state.pad_mode[idx(d)] == mode {
+                    // A button's lamp is bright when the selected mode belongs to
+                    // that button's family (primary OR its shift variant) — the
+                    // two share one physical lamp, so we drive only the primary
+                    // address (the shift address would fight it, last-write-wins).
+                    if state.pad_mode[idx(d)].same_button(mode) {
                         0x7F
                     } else {
                         0x20
@@ -438,6 +443,34 @@ mod tests {
             frame.contains(&[0x90, 0x1E, 0x7F]),
             "Pad FX1 bright (selected)"
         );
+    }
+
+    #[test]
+    fn shift_pad_mode_lights_its_primary_button_lamp() {
+        // Pad FX2 (a shift mode) shares the Pad FX1 button's lamp, so selecting
+        // it must light the primary Pad FX1 rule bright — and leave Hot Cue dim.
+        let rules = [
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::HotCue),
+                status: 0x90,
+                data1: 0x1B,
+            },
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::PadFx1),
+                status: 0x90,
+                data1: 0x1E,
+            },
+        ];
+        let st = FeedbackState {
+            pad_mode: [PadMode::PadFx2, PadMode::HotCue],
+            ..Default::default()
+        };
+        let frame = render(&rules, &st);
+        assert!(
+            frame.contains(&[0x90, 0x1E, 0x7F]),
+            "Pad FX button bright in FX2"
+        );
+        assert!(frame.contains(&[0x90, 0x1B, 0x20]), "Hot Cue dim");
     }
 
     #[test]
