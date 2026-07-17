@@ -4,7 +4,7 @@
 //! frame, and the profile's [`FeedbackRule`]s say which control reflects which
 //! value. The MIDI I/O and the polling loop live in the app.
 
-use crate::Deck;
+use crate::{Deck, PadMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -39,6 +39,9 @@ pub struct FeedbackState {
     /// Per-deck per-stem solo state (drives stem-solo button LEDs).
     /// Index `[deck][stem]`: deck 0 = A, deck 1 = B; stem 0–3.
     pub stem_soloed: [[bool; 4]; 2],
+    /// Per-deck selected pad mode (FLX4 pad-mode cluster LEDs). Default
+    /// `HotCue` matches the controller's power-on lamp.
+    pub pad_mode: [PadMode; 2],
 }
 
 /// Which engine value a feedback rule reflects.
@@ -64,6 +67,10 @@ pub enum FeedbackSource {
     SavedLoopSlot(Deck, u8),
     /// Beat FX ON/OFF — on → full (0x7F), off → zero (LED).
     BeatFxOn,
+    /// Pad-mode selector LED (FLX4 mode cluster): bright (`0x7F`) when this mode
+    /// is the deck's selected pad mode, dim (`0x20`) otherwise. The unselected
+    /// buttons stay dimly lit on the hardware, never fully off.
+    PadModeLed(Deck, PadMode),
     /// Per-stem mute — on → full (`0x7F`), off → zero (mute button LED).
     /// `(deck, stem_index)` where stem_index is 0–3.
     StemMuted(Deck, u8),
@@ -153,6 +160,13 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                         0x7F
                     } else {
                         0x00
+                    }
+                }
+                FeedbackSource::PadModeLed(d, mode) => {
+                    if state.pad_mode[idx(d)] == mode {
+                        0x7F
+                    } else {
+                        0x20
                     }
                 }
                 FeedbackSource::StemMuted(d, s) => {
@@ -395,5 +409,64 @@ mod tests {
         assert_eq!(render(&rules, &on), vec![[0x94, 0x47, 0x7F]]);
         let off = FeedbackState::default(); // beat_fx_on defaults false
         assert_eq!(render(&rules, &off), vec![[0x94, 0x47, 0x00]]);
+    }
+
+    #[test]
+    fn renders_pad_mode_bright_selected_dim_others() {
+        let rules = [
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::HotCue),
+                status: 0x90,
+                data1: 0x1B,
+            },
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::PadFx1),
+                status: 0x90,
+                data1: 0x1E,
+            },
+        ];
+        let st = FeedbackState {
+            pad_mode: [PadMode::PadFx1, PadMode::HotCue],
+            ..Default::default()
+        };
+        let frame = render(&rules, &st);
+        assert!(
+            frame.contains(&[0x90, 0x1B, 0x20]),
+            "Hot Cue dim (not selected)"
+        );
+        assert!(
+            frame.contains(&[0x90, 0x1E, 0x7F]),
+            "Pad FX1 bright (selected)"
+        );
+    }
+
+    #[test]
+    fn switching_pad_mode_diffs_only_the_two_changed_lamps() {
+        let rules = [
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::HotCue),
+                status: 0x90,
+                data1: 0x1B,
+            },
+            FeedbackRule {
+                source: FeedbackSource::PadModeLed(Deck::A, PadMode::PadFx1),
+                status: 0x90,
+                data1: 0x1E,
+            },
+        ];
+        let mut diff = FeedbackDiff::new();
+        let start = FeedbackState {
+            pad_mode: [PadMode::HotCue, PadMode::HotCue],
+            ..Default::default()
+        };
+        let _ = diff.changed(&render(&rules, &start)); // prime
+        let moved = FeedbackState {
+            pad_mode: [PadMode::PadFx1, PadMode::HotCue],
+            ..Default::default()
+        };
+        let changed = diff.changed(&render(&rules, &moved));
+        assert_eq!(changed.len(), 2);
+        assert!(changed.contains(&[0x90, 0x1B, 0x20]));
+        assert!(changed.contains(&[0x90, 0x1E, 0x7F]));
     }
 }
