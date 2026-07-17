@@ -11,6 +11,11 @@ use std::collections::HashMap;
 /// A compact, `Copy` set of currently-held note addresses — one bit per
 /// `(note-channel, note)`. Used to echo a controller pad's LED while it is held.
 /// Index = `(status & 0x0F) * 128 + note` into 2048 bits.
+///
+/// The index uses only the status **channel nibble**, so this is intended for
+/// note-on/off addresses (status `0x90–0x9F`): pass the same `(status, note)`
+/// the profile's `HeldEcho` feedback rules are keyed on. A same-channel CC
+/// (`0xB_`) would alias to the same bit — callers must key on note status.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct HeldNotes {
     bits: [u64; 32],
