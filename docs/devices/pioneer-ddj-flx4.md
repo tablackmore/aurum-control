@@ -77,7 +77,7 @@ browse encoder at 0. The profile must declare per-control encoding.
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
 | BEAT SYNC LED | note `0x58` (`0x90` deck 1, `0x91` deck 2) — assumed LED = input note (PLAY/CUE pattern); **not yet hardware-verified** |
 | Pad-mode cluster LEDs (4 buttons: Hot Cue/Pad FX1/Beat Jump/Sampler) | bright `0x7F` (selected family) / dim `0x20` (available) at the **4 primary notes** `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90` deck 1 / `0x91` deck 2) — all hardware-verified 2026-07-17. Shift variants share the primary's lamp (see below), so only the primary address is driven; a shift mode lights its primary lamp via `PadMode::same_button` |
-| Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2), driven by `HotCueSlot` feedback rules — off (`0x00`) when the slot is empty, bright (`0x7F`) when set; RGB colour via the profile `palette` (velocity→colour), to be captured on the unit |
+| Hot-cue pad LEDs | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2), driven by `HotCueSlot` feedback rules — off (`0x00`) when the slot is empty, bright (`0x7F`) when set. **Single-colour (yellow), brightness-only — NOT RGB** (hardware-verified 2026-07-17: a velocity sweep `0x01–0x7F` lit every pad yellow, no colour variation; the FLX4 is entry-level, unlike the RGB pads on the FLX6/FLX10). The `HotCueSlot`/`LedColor` colour model still applies — the FLX4 profile just registers no `palette`, so any set cue renders bright yellow; an RGB-capable controller would map its palette instead |
 
 **⚠️ VU meters — Mixxx was right:** an earlier revision of this doc claimed both
 meters live on channel 1 (right = `B0 03`) and called Mixxx's `B1 02` a bug. A
