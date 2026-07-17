@@ -31,7 +31,9 @@ pub use profile::{
 };
 
 pub mod feedback;
-pub use feedback::{FeedbackDiff, FeedbackRule, FeedbackSource, FeedbackState, LedColor};
+pub use feedback::{
+    FeedbackDiff, FeedbackRule, FeedbackSource, FeedbackState, HeldNotes, LedColor,
+};
 
 pub mod profiles;
 pub use profiles::{builtin_by_name, builtin_for_port};

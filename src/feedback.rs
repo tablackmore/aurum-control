@@ -8,6 +8,37 @@ use crate::{Deck, PadMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// A compact, `Copy` set of currently-held note addresses — one bit per
+/// `(note-channel, note)`. Used to echo a controller pad's LED while it is held.
+/// Index = `(status & 0x0F) * 128 + note` into 2048 bits.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct HeldNotes {
+    bits: [u64; 32],
+}
+
+impl HeldNotes {
+    fn index(status: u8, note: u8) -> usize {
+        ((status & 0x0F) as usize) * 128 + (note & 0x7F) as usize
+    }
+
+    /// Mark `(status, note)` held or released.
+    pub fn set(&mut self, status: u8, note: u8, held: bool) {
+        let i = Self::index(status, note);
+        let (w, b) = (i / 64, i % 64);
+        if held {
+            self.bits[w] |= 1 << b;
+        } else {
+            self.bits[w] &= !(1 << b);
+        }
+    }
+
+    /// Whether `(status, note)` is currently held.
+    pub fn contains(&self, status: u8, note: u8) -> bool {
+        let i = Self::index(status, note);
+        (self.bits[i / 64] >> (i % 64)) & 1 == 1
+    }
+}
+
 /// A device-agnostic hot-cue / pad colour. Each device profile maps these to
 /// its own hardware values via [`Profile::palette`](crate::Profile); a device
 /// with no palette renders any colour as plain bright.
@@ -70,6 +101,9 @@ pub struct FeedbackState {
     /// Per-deck hot-cue slots: `None` = empty, `Some(color)` = a cue is set with
     /// that colour (`[deck][slot]`, slot 0–7). Drives the hot-cue pad LEDs.
     pub hot_cue: [[Option<LedColor>; 8]; 2],
+    /// Currently-held note addresses, for pads that echo their LED while held
+    /// (FLX4 Pad FX pads). The app updates this from raw note-on/off.
+    pub held: HeldNotes,
 }
 
 /// Which engine value a feedback rule reflects.
@@ -109,6 +143,9 @@ pub enum FeedbackSource {
     /// Hot-cue pad LED: off when the slot is empty, else the slot's colour mapped
     /// through the profile palette (or plain bright if the profile has none).
     HotCueSlot(Deck, u8),
+    /// Echo a pad's LED while its note address is held: bright (`0x7F`) when
+    /// `FeedbackState::held` contains this rule's own `(status, data1)`, else off.
+    HeldEcho,
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -240,6 +277,13 @@ pub fn render_with_palette(
                             .find(|(c, _)| *c == color)
                             .map(|(_, v)| *v)
                             .unwrap_or(0x7F),
+                    }
+                }
+                FeedbackSource::HeldEcho => {
+                    if state.held.contains(r.status, r.data1) {
+                        0x7F
+                    } else {
+                        0x00
                     }
                 }
             };
@@ -593,5 +637,36 @@ mod tests {
         let mut st = FeedbackState::default();
         st.hot_cue[0][0] = Some(LedColor::Green);
         assert!(render_with_palette(&rules, &st, &palette).contains(&[0x97, 0x00, 0x1A]));
+    }
+
+    #[test]
+    fn held_notes_set_contains_clear() {
+        let mut h = HeldNotes::default();
+        assert!(!h.contains(0x97, 0x10));
+        h.set(0x97, 0x10, true);
+        assert!(h.contains(0x97, 0x10));
+        assert!(!h.contains(0x99, 0x10), "different channel is independent");
+        assert!(!h.contains(0x97, 0x11), "different note is independent");
+        h.set(0x97, 0x10, false);
+        assert!(!h.contains(0x97, 0x10));
+    }
+
+    #[test]
+    fn held_echo_renders_bright_only_when_held() {
+        let rules = [FeedbackRule {
+            source: FeedbackSource::HeldEcho,
+            status: 0x97,
+            data1: 0x10,
+        }];
+        let mut st = FeedbackState::default();
+        assert!(
+            render(&rules, &st).contains(&[0x97, 0x10, 0x00]),
+            "not held → off"
+        );
+        st.held.set(0x97, 0x10, true);
+        assert!(
+            render(&rules, &st).contains(&[0x97, 0x10, 0x7F]),
+            "held → bright"
+        );
     }
 }
