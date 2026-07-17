@@ -8,6 +8,31 @@ use crate::{Deck, PadMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// A device-agnostic hot-cue / pad colour. Each device profile maps these to
+/// its own hardware values via [`Profile::palette`](crate::Profile); a device
+/// with no palette renders any colour as plain bright.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum LedColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Cyan,
+    Blue,
+    Purple,
+    Magenta,
+}
+
+impl LedColor {
+    /// The default colour for hot-cue slot `n` (0-based), so pads show colour
+    /// with no user picker yet — a fixed 8-slot palette.
+    pub fn default_for_slot(slot: u8) -> LedColor {
+        use LedColor::*;
+        const PALETTE: [LedColor; 8] = [Red, Orange, Yellow, Green, Cyan, Blue, Purple, Magenta];
+        PALETTE[(slot as usize) % PALETTE.len()]
+    }
+}
+
 /// Engine state the feedback renderer reads, in device-agnostic terms. The app
 /// fills this from its telemetry each frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -223,6 +248,14 @@ impl FeedbackDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn led_color_default_palette_covers_eight_slots() {
+        assert_eq!(LedColor::default_for_slot(0), LedColor::Red);
+        assert_eq!(LedColor::default_for_slot(7), LedColor::Magenta);
+        // Out-of-range wraps rather than panicking.
+        assert_eq!(LedColor::default_for_slot(8), LedColor::Red);
+    }
 
     #[test]
     fn renders_loop_and_saved_loop_leds() {
