@@ -8,6 +8,31 @@ use crate::{Deck, PadMode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// A device-agnostic hot-cue / pad colour. Each device profile maps these to
+/// its own hardware values via [`Profile::palette`](crate::Profile); a device
+/// with no palette renders any colour as plain bright.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+pub enum LedColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Cyan,
+    Blue,
+    Purple,
+    Magenta,
+}
+
+impl LedColor {
+    /// The default colour for hot-cue slot `n` (0-based), so pads show colour
+    /// with no user picker yet — a fixed 8-slot palette.
+    pub fn default_for_slot(slot: u8) -> LedColor {
+        use LedColor::*;
+        const PALETTE: [LedColor; 8] = [Red, Orange, Yellow, Green, Cyan, Blue, Purple, Magenta];
+        PALETTE[(slot as usize) % PALETTE.len()]
+    }
+}
+
 /// Engine state the feedback renderer reads, in device-agnostic terms. The app
 /// fills this from its telemetry each frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -42,6 +67,9 @@ pub struct FeedbackState {
     /// Per-deck selected pad mode (FLX4 pad-mode cluster LEDs). Default
     /// `HotCue` matches the controller's power-on lamp.
     pub pad_mode: [PadMode; 2],
+    /// Per-deck hot-cue slots: `None` = empty, `Some(color)` = a cue is set with
+    /// that colour (`[deck][slot]`, slot 0–7). Drives the hot-cue pad LEDs.
+    pub hot_cue: [[Option<LedColor>; 8]; 2],
 }
 
 /// Which engine value a feedback rule reflects.
@@ -78,6 +106,9 @@ pub enum FeedbackSource {
     /// Per-stem solo — on → full (`0x7F`), off → zero (solo button LED).
     /// `(deck, stem_index)` where stem_index is 0–3.
     StemSoloed(Deck, u8),
+    /// Hot-cue pad LED: off when the slot is empty, else the slot's colour mapped
+    /// through the profile palette (or plain bright if the profile has none).
+    HotCueSlot(Deck, u8),
 }
 
 /// One feedback rule: a [`FeedbackSource`] mapped to a concrete MIDI address
@@ -101,8 +132,18 @@ fn unit_to_7bit(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 127.0).round() as u8
 }
 
-/// Render one full feedback frame: the 3-byte MIDI message for every rule.
+/// Render one full feedback frame with no colour palette (monochrome).
 pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
+    render_with_palette(rules, state, &[])
+}
+
+/// Render one full feedback frame; `palette` maps [`LedColor`] to a device
+/// velocity for colour-capable sources (empty = monochrome bright).
+pub fn render_with_palette(
+    rules: &[FeedbackRule],
+    state: &FeedbackState,
+    palette: &[(LedColor, u8)],
+) -> Vec<[u8; 3]> {
     rules
         .iter()
         .map(|r| {
@@ -190,6 +231,17 @@ pub fn render(rules: &[FeedbackRule], state: &FeedbackState) -> Vec<[u8; 3]> {
                         0x00
                     }
                 }
+                FeedbackSource::HotCueSlot(d, s) => {
+                    let slot = s as usize;
+                    match state.hot_cue[idx(d)].get(slot).copied().flatten() {
+                        None => 0x00,
+                        Some(color) => palette
+                            .iter()
+                            .find(|(c, _)| *c == color)
+                            .map(|(_, v)| *v)
+                            .unwrap_or(0x7F),
+                    }
+                }
             };
             [r.status, r.data1, data2]
         })
@@ -223,6 +275,14 @@ impl FeedbackDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn led_color_default_palette_covers_eight_slots() {
+        assert_eq!(LedColor::default_for_slot(0), LedColor::Red);
+        assert_eq!(LedColor::default_for_slot(7), LedColor::Magenta);
+        // Out-of-range wraps rather than panicking.
+        assert_eq!(LedColor::default_for_slot(8), LedColor::Red);
+    }
 
     #[test]
     fn renders_loop_and_saved_loop_leds() {
@@ -501,5 +561,37 @@ mod tests {
         assert_eq!(changed.len(), 2);
         assert!(changed.contains(&[0x90, 0x1B, 0x20]));
         assert!(changed.contains(&[0x90, 0x1E, 0x7F]));
+    }
+
+    #[test]
+    fn hot_cue_slot_renders_off_empty_bright_when_no_palette() {
+        let rules = [FeedbackRule {
+            source: FeedbackSource::HotCueSlot(Deck::A, 0),
+            status: 0x97,
+            data1: 0x00,
+        }];
+        let mut st = FeedbackState::default();
+        assert!(
+            render(&rules, &st).contains(&[0x97, 0x00, 0x00]),
+            "empty → off"
+        );
+        st.hot_cue[0][0] = Some(LedColor::Green);
+        assert!(
+            render(&rules, &st).contains(&[0x97, 0x00, 0x7F]),
+            "set, no palette → bright"
+        );
+    }
+
+    #[test]
+    fn hot_cue_slot_uses_palette_velocity_when_present() {
+        let rules = [FeedbackRule {
+            source: FeedbackSource::HotCueSlot(Deck::A, 0),
+            status: 0x97,
+            data1: 0x00,
+        }];
+        let palette = [(LedColor::Green, 0x1A), (LedColor::Red, 0x06)];
+        let mut st = FeedbackState::default();
+        st.hot_cue[0][0] = Some(LedColor::Green);
+        assert!(render_with_palette(&rules, &st, &palette).contains(&[0x97, 0x00, 0x1A]));
     }
 }
