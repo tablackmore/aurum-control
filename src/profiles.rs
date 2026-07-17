@@ -961,4 +961,17 @@ mod tests {
         );
         assert!(frame.contains(&[0x90, 0x1B, 0x20]), "Hot Cue dim");
     }
+
+    #[test]
+    fn flx4_feedback_renders_held_pad_fx_pads() {
+        use crate::FeedbackState;
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let mut state = FeedbackState::default();
+        state.held.set(0x97, 0x13, true); // deck A brake pad held
+        state.held.set(0x99, 0x1F, true); // deck B last FX pad held
+        let frame = p.render_feedback(&state);
+        assert!(frame.contains(&[0x97, 0x13, 0x7F]), "held FX pad bright");
+        assert!(frame.contains(&[0x97, 0x10, 0x00]), "un-held FX pad off");
+        assert!(frame.contains(&[0x99, 0x1F, 0x7F]));
+    }
 }
