@@ -43,7 +43,7 @@ and LEDs began responding. (Source: Mixxx script, "reverse engineered with Wires
 | SHIFT | note `0x3F` (`0x90` left / `0x91` right) | modifier — hardware emits distinct notes for shifted buttons |
 | Hot-cue-mode pads 1–8 | notes `0x00–0x07` (status `0x97`; +shift `0x98`) | button |
 | Sampler-mode pads 1–8 | notes `0x30–0x37` (status `0x97`) | button — **repurposed**: top row `0x30–0x33` → stem **mute** 0–3, bottom `0x34–0x37` → stem **solo** 0–3 |
-| Pad-mode select: Hot Cue / Pad FX1 / Beat Jump / Sampler | notes `0x1B` / `0x1E` / `0x20` / `0x22` (`0x90`) | button (also LED, see below) |
+| Pad-mode select: Hot Cue / Pad FX1 / Beat Jump / Sampler (+ shift: Hot Cue / Pad FX2 / Beat Loop / Sampler) | primary notes `0x1B` / `0x1E` / `0x20` / `0x22`, shift notes `0x69` / `0x6B` / `0x6D` / `0x6F` (`0x90` deck 1 / `0x91` deck 2) — **all 8 hardware-verified 2026-07-17** | button (also LED, see below) |
 | Trim · EQ Hi · EQ Mid · EQ Low | CC `0x04` · `0x07` · `0x0B` · `0x0F` (+`+0x20` LSB), `0xB0` | 14-bit |
 | Channel fader | CC `0x13` (+LSB), `0xB0` | 14-bit |
 | Tempo fader | CC `0x00` (+LSB), `0xB0` | 14-bit |
@@ -76,7 +76,7 @@ browse encoder at 0. The profile must declare per-control encoding.
 | Master-cue LED | note `0x63` (`0x96`) |
 | Play / Cue LED | note `0x0B` / `0x0C` (`0x90` deck 1, `0x91` deck 2) |
 | BEAT SYNC LED | note `0x58` (`0x90` deck 1, `0x91` deck 2) — assumed LED = input note (PLAY/CUE pattern); **not yet hardware-verified** |
-| Pad-mode LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler) | notes `0x1B`/`0x1E`/`0x20`/`0x22` (`0x90`/`0x91`) |
+| Pad-mode cluster LEDs (Hot Cue/Pad FX1/Beat Jump/Sampler + shift: Hot Cue/Pad FX2/Beat Loop/Sampler) | bright `0x7F` (selected) / dim `0x20` (available) at primary notes `0x1B`/`0x1E`/`0x20`/`0x22` and shift notes `0x69`/`0x6B`/`0x6D`/`0x6F` (`0x90` deck 1 / `0x91` deck 2) — primary addresses hardware-verified 2026-07-17; the shift addresses drive the shared lamp and the dim/bright lit-style there is still pending live confirmation |
 | Hot-cue pad RGB | notes `0x00–0x07` on `0x97` (deck 1) / `0x99` (deck 2); colour via velocity palette (TODO from Pioneer list) |
 
 **⚠️ VU meters — Mixxx was right:** an earlier revision of this doc claimed both
@@ -87,8 +87,11 @@ the right meter is **`B1 02`**, on the deck-2 channel like every other deck-2
 control. The meter shows the value as a level/peak position, so feed it the
 deck's current level each tick.
 
-**Pad-mode LEDs are mutually exclusive** — the unit keeps only one lit (it shows
-the active pad mode), so to switch modes just light the new one.
+**Pad-mode LEDs are NOT hardware-managed** — unlike some Pioneer units, the FLX4
+does not keep only one lit on its own; the host must drive this explicitly:
+light the selected mode bright (`0x7F`) and every other mode in the cluster dim
+(`0x20`) on each pad-mode change (`aurum-control`'s `PadModeLed` feedback rules
+do this, one rule per mode per deck).
 
 ## AURUM integration notes
 

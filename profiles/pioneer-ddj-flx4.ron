@@ -52,6 +52,16 @@ Profile(
         // SHIFT (0x3F) co-fires but is unbound.
         InputBinding(status: 0x90, data1: 0x4C, target: LoopInAdj(A)),        // shift: IN ADJ
         InputBinding(status: 0x90, data1: 0x4E, target: LoopOutAdj(A)),       // shift: OUT ADJ
+        // Pad-mode selector buttons (deck channel 0x90) — latching display state
+        // that drives the mode-cluster LEDs. Notes hardware-verified 2026-07-17.
+        InputBinding(status: 0x90, data1: 0x1B, target: PadModeSelect(A, HotCue)),
+        InputBinding(status: 0x90, data1: 0x69, target: PadModeSelect(A, HotCueShift)),
+        InputBinding(status: 0x90, data1: 0x1E, target: PadModeSelect(A, PadFx1)),
+        InputBinding(status: 0x90, data1: 0x6B, target: PadModeSelect(A, PadFx2)),
+        InputBinding(status: 0x90, data1: 0x20, target: PadModeSelect(A, BeatJump)),
+        InputBinding(status: 0x90, data1: 0x6D, target: PadModeSelect(A, BeatLoop)),
+        InputBinding(status: 0x90, data1: 0x22, target: PadModeSelect(A, Sampler)),
+        InputBinding(status: 0x90, data1: 0x6F, target: PadModeSelect(A, SamplerShift)),
         // Not yet bound (need engine work): MASTER long-press on SYNC.
         // hot-cue pads 0x00..0x07 — momentary (hold-to-play): press jumps to the cue,
         // release returns to the slip ghost when slip is on (plain jump when off)
@@ -138,6 +148,15 @@ Profile(
         InputBinding(status: 0x91, data1: 0x3D, target: LoopSave(B)),         // shift: MEMORY
         InputBinding(status: 0x91, data1: 0x4C, target: LoopInAdj(B)),        // shift: IN ADJ
         InputBinding(status: 0x91, data1: 0x4E, target: LoopOutAdj(B)),       // shift: OUT ADJ
+        // Pad-mode selector buttons (deck channel 0x91) — mirror of deck A.
+        InputBinding(status: 0x91, data1: 0x1B, target: PadModeSelect(B, HotCue)),
+        InputBinding(status: 0x91, data1: 0x69, target: PadModeSelect(B, HotCueShift)),
+        InputBinding(status: 0x91, data1: 0x1E, target: PadModeSelect(B, PadFx1)),
+        InputBinding(status: 0x91, data1: 0x6B, target: PadModeSelect(B, PadFx2)),
+        InputBinding(status: 0x91, data1: 0x20, target: PadModeSelect(B, BeatJump)),
+        InputBinding(status: 0x91, data1: 0x6D, target: PadModeSelect(B, BeatLoop)),
+        InputBinding(status: 0x91, data1: 0x22, target: PadModeSelect(B, Sampler)),
+        InputBinding(status: 0x91, data1: 0x6F, target: PadModeSelect(B, SamplerShift)),
         InputBinding(status: 0x99, data1: 0x00, target: HotCueHold(B, 0)),
         InputBinding(status: 0x99, data1: 0x01, target: HotCueHold(B, 1)),
         InputBinding(status: 0x99, data1: 0x02, target: HotCueHold(B, 2)),
@@ -284,5 +303,25 @@ Profile(
         FeedbackRule(source: SavedLoopSlot(B, 7), status: 0x99, data1: 0x67),
         // Beat FX ON/OFF LED — echoes the input address (standard Pioneer pattern).
         FeedbackRule(source: BeatFxOn, status: 0x94, data1: 0x47),
+
+        // Pad-mode cluster LEDs — bright (0x7F) selected / dim (0x20) available.
+        // Primary addresses hardware-verified 2026-07-17; the shift addresses
+        // (0x69/0x6B/0x6D/0x6F) drive the shared lamp — verify the lit style live.
+        FeedbackRule(source: PadModeLed(A, HotCue),       status: 0x90, data1: 0x1B),
+        FeedbackRule(source: PadModeLed(A, HotCueShift),  status: 0x90, data1: 0x69),
+        FeedbackRule(source: PadModeLed(A, PadFx1),       status: 0x90, data1: 0x1E),
+        FeedbackRule(source: PadModeLed(A, PadFx2),       status: 0x90, data1: 0x6B),
+        FeedbackRule(source: PadModeLed(A, BeatJump),     status: 0x90, data1: 0x20),
+        FeedbackRule(source: PadModeLed(A, BeatLoop),     status: 0x90, data1: 0x6D),
+        FeedbackRule(source: PadModeLed(A, Sampler),      status: 0x90, data1: 0x22),
+        FeedbackRule(source: PadModeLed(A, SamplerShift), status: 0x90, data1: 0x6F),
+        FeedbackRule(source: PadModeLed(B, HotCue),       status: 0x91, data1: 0x1B),
+        FeedbackRule(source: PadModeLed(B, HotCueShift),  status: 0x91, data1: 0x69),
+        FeedbackRule(source: PadModeLed(B, PadFx1),       status: 0x91, data1: 0x1E),
+        FeedbackRule(source: PadModeLed(B, PadFx2),       status: 0x91, data1: 0x6B),
+        FeedbackRule(source: PadModeLed(B, BeatJump),     status: 0x91, data1: 0x20),
+        FeedbackRule(source: PadModeLed(B, BeatLoop),     status: 0x91, data1: 0x6D),
+        FeedbackRule(source: PadModeLed(B, Sampler),      status: 0x91, data1: 0x22),
+        FeedbackRule(source: PadModeLed(B, SamplerShift), status: 0x91, data1: 0x6F),
     ],
 )

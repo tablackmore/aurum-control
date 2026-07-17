@@ -49,7 +49,9 @@ pub fn builtin_for_port(port_name: &str) -> Option<Profile> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ActionValue, Deck, FeedbackSource, MidiMessage, Profile, ProfileDecoder, Target};
+    use crate::{
+        ActionValue, Deck, FeedbackSource, MidiMessage, PadMode, Profile, ProfileDecoder, Target,
+    };
 
     fn flx4() -> crate::Profile {
         builtin_for_port("DDJ-FLX4").unwrap()
@@ -852,5 +854,68 @@ mod tests {
             .expect("JogScratch(A) binding must survive round-trip");
         assert_eq!(jog_rest.rel, jog_orig.rel);
         assert_eq!(jog_rest.target, jog_orig.target);
+    }
+
+    #[test]
+    fn flx4_decodes_pad_mode_selectors() {
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let cases = [
+            (0u8, 0x1B, Target::PadModeSelect(Deck::A, PadMode::HotCue)),
+            (
+                0,
+                0x69,
+                Target::PadModeSelect(Deck::A, PadMode::HotCueShift),
+            ),
+            (0, 0x1E, Target::PadModeSelect(Deck::A, PadMode::PadFx1)),
+            (0, 0x6B, Target::PadModeSelect(Deck::A, PadMode::PadFx2)),
+            (0, 0x20, Target::PadModeSelect(Deck::A, PadMode::BeatJump)),
+            (0, 0x6D, Target::PadModeSelect(Deck::A, PadMode::BeatLoop)),
+            (0, 0x22, Target::PadModeSelect(Deck::A, PadMode::Sampler)),
+            (
+                0,
+                0x6F,
+                Target::PadModeSelect(Deck::A, PadMode::SamplerShift),
+            ),
+            (1, 0x1E, Target::PadModeSelect(Deck::B, PadMode::PadFx1)),
+            (1, 0x6D, Target::PadModeSelect(Deck::B, PadMode::BeatLoop)),
+        ];
+        for (channel, note, want) in cases {
+            let a = p
+                .decode(&MidiMessage::NoteOn {
+                    channel,
+                    note,
+                    velocity: 127,
+                })
+                .unwrap_or_else(|| panic!("no binding for ch {channel} note {note:#x}"));
+            assert_eq!(a.target, want);
+            assert_eq!(a.value, ActionValue::Absolute(1.0));
+        }
+        // Release carries through as 0.0 at the raw layer; the stateful decoder
+        // drops the Trigger falling edge and the host acts on press only.
+        let rel = p
+            .decode(&MidiMessage::NoteOff {
+                channel: 0,
+                note: 0x1E,
+            })
+            .unwrap();
+        assert_eq!(rel.target, Target::PadModeSelect(Deck::A, PadMode::PadFx1));
+        assert_eq!(rel.value, ActionValue::Absolute(0.0));
+    }
+
+    #[test]
+    fn flx4_feedback_renders_pad_mode_leds() {
+        use crate::{FeedbackState, PadMode};
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let state = FeedbackState {
+            pad_mode: [PadMode::BeatJump, PadMode::HotCue],
+            ..Default::default()
+        };
+        let frame = p.render_feedback(&state);
+        // Deck A in Beat Jump → Beat Jump bright, Hot Cue dim.
+        assert!(frame.contains(&[0x90, 0x20, 0x7F]));
+        assert!(frame.contains(&[0x90, 0x1B, 0x20]));
+        // Deck B default Hot Cue → Hot Cue bright, Sampler dim.
+        assert!(frame.contains(&[0x91, 0x1B, 0x7F]));
+        assert!(frame.contains(&[0x91, 0x22, 0x20]));
     }
 }
