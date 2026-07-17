@@ -10,7 +10,9 @@ mod message;
 pub use message::{parse, MidiMessage};
 
 mod mapping;
-pub use mapping::{Action, Binding, ControlId, Deck, Kind, MidiMap, Mode, Options, Target};
+pub use mapping::{
+    Action, Binding, ControlId, Deck, Kind, MidiMap, Mode, Options, PadMode, Target,
+};
 
 pub mod jog;
 

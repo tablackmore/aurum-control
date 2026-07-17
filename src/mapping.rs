@@ -44,6 +44,22 @@ impl Deck {
     }
 }
 
+/// Pioneer pad-mode selection — which function the 8 performance pads perform.
+/// Latching device display-state used only to drive the mode-cluster LEDs; the
+/// pads self-disambiguate by note range, so the engine never needs this.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize, Hash)]
+pub enum PadMode {
+    #[default]
+    HotCue,
+    HotCueShift,
+    PadFx1,
+    PadFx2,
+    BeatJump,
+    BeatLoop,
+    Sampler,
+    SamplerShift,
+}
+
 /// How a target reacts to incoming values — used to pick a sensible default mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
@@ -218,6 +234,11 @@ pub enum Target {
     /// Beat FX release: musical exit — the FX stops but rings out
     /// (FLX4 SHIFT + ON/OFF).
     BeatFxRelease,
+    /// Pad-mode selector press (FLX4 Hot Cue / Pad FX1 / Beat Jump / Sampler +
+    /// shift variants). Latching device display-state: the HOST records the mode
+    /// and drives the cluster LEDs via `FeedbackState::pad_mode`; there is no
+    /// engine action. `Kind::Trigger` — fires on press, host ignores the release.
+    PadModeSelect(Deck, PadMode),
 }
 
 impl Target {
@@ -245,9 +266,8 @@ impl Target {
             LoopToggle(_) | Sync(_) | HotCue(..) | HotCueClear(..) | LoopIn(_) | LoopOut(_)
             | LoopHalve(_) | LoopDouble(_) | BeatJump(..) | LoopSet(..) | LoopFourOrExit(_)
             | LoopReloop(_) | LoopSave(_) | LoopCallPrev(_) | LoopCallNext(_) | LoopDelete(_)
-            | LoopSlot(..) | LoopSlotDelete(..) | LibraryOpen | LoadDeck(_) | TempoRange(_) => {
-                Kind::Trigger
-            }
+            | LoopSlot(..) | LoopSlotDelete(..) | LibraryOpen | LoadDeck(_) | TempoRange(_)
+            | PadModeSelect(..) => Kind::Trigger,
             // Extended targets — continuous, toggle, or trigger as the param requires.
             StemSend(..) | Filter(_) | Transpose(_) | FxSlotMix(..) | FxSlotType(..)
             | FxSlotParam(..) | FxSlotDivision(..) | BeatFxLevel => Kind::Continuous,
@@ -339,6 +359,19 @@ impl Target {
             BeatFxLevel => "Beat FX · Level/Depth".into(),
             BeatFxOn => "Beat FX · On/Off".into(),
             BeatFxRelease => "Beat FX · Release".into(),
+            PadModeSelect(d, m) => {
+                let name = match m {
+                    PadMode::HotCue => "Hot Cue",
+                    PadMode::HotCueShift => "Hot Cue (shift)",
+                    PadMode::PadFx1 => "Pad FX1",
+                    PadMode::PadFx2 => "Pad FX2",
+                    PadMode::BeatJump => "Beat Jump",
+                    PadMode::BeatLoop => "Beat-Loop",
+                    PadMode::Sampler => "Sampler",
+                    PadMode::SamplerShift => "Sampler (shift)",
+                };
+                format!("Deck {} · Pad mode: {name}", d.tag())
+            }
         }
     }
 }
@@ -1356,5 +1389,14 @@ mod tests {
         assert_eq!(Target::BeatFxLevel.label(), "Beat FX · Level/Depth");
         assert_eq!(Target::BeatFxAuto.label(), "Beat FX · Auto BPM");
         assert_eq!(Target::BeatFxTap.label(), "Beat FX · Tap tempo");
+    }
+
+    #[test]
+    fn pad_mode_select_is_trigger_and_defaults_to_hot_cue() {
+        assert_eq!(PadMode::default(), PadMode::HotCue);
+        assert_eq!(
+            Target::PadModeSelect(Deck::A, PadMode::PadFx2).kind(),
+            Kind::Trigger
+        );
     }
 }
