@@ -901,4 +901,21 @@ mod tests {
         assert_eq!(rel.target, Target::PadModeSelect(Deck::A, PadMode::PadFx1));
         assert_eq!(rel.value, ActionValue::Absolute(0.0));
     }
+
+    #[test]
+    fn flx4_feedback_renders_pad_mode_leds() {
+        use crate::{FeedbackState, PadMode};
+        let p = builtin_for_port("DDJ-FLX4").unwrap();
+        let state = FeedbackState {
+            pad_mode: [PadMode::BeatJump, PadMode::HotCue],
+            ..Default::default()
+        };
+        let frame = p.render_feedback(&state);
+        // Deck A in Beat Jump → Beat Jump bright, Hot Cue dim.
+        assert!(frame.contains(&[0x90, 0x20, 0x7F]));
+        assert!(frame.contains(&[0x90, 0x1B, 0x20]));
+        // Deck B default Hot Cue → Hot Cue bright, Sampler dim.
+        assert!(frame.contains(&[0x91, 0x1B, 0x7F]));
+        assert!(frame.contains(&[0x91, 0x22, 0x20]));
+    }
 }
