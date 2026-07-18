@@ -1,0 +1,7 @@
+# Pin the toolchain so local builds and CI use the SAME Rust/clippy version.
+# Without this, CI's floating `stable` drifted ahead of a contributor's local
+# clippy (0.1.96 vs CI 1.97) and reddened a `question_mark` lint on unrelated
+# code. Bump this deliberately (and the matching `toolchain:` in ci.yml).
+[toolchain]
+channel = "1.97"
+components = ["clippy", "rustfmt"]
