@@ -1,0 +1,92 @@
+// Teenage Engineering TX-6 — runtime input profile (flat schema, parses with
+// `Profile`).
+//
+// Addresses are derived from the OFFICIAL Teenage Engineering TX-6 MIDI
+// reference (https://teenage.engineering/guides/tx-6, firmware 1.3.3) — the
+// outgoing "MIDI controller" table. They are NOT yet captured live — they MUST
+// be verified live on the unit with the `ctl` harness before relying on them.
+//
+// Device prerequisites:
+//   - `ctrl out` must be enabled in the TX-6's MIDI settings, or the mixer
+//     sends nothing.
+//   - Assumes firmware ≥ 1.2.5 (earlier firmware used non-0–127 CC ranges).
+//
+// Protocol shape (per the TE reference):
+//   - Everything is a CC on MIDI channel 1 (status 0xB0).
+//   - Faders/knobs: absolute 0–127.
+//   - Buttons: momentary 0/127 (0–63 off / 64–127 on) — the decoder's natural
+//     Toggle/Trigger press-edge semantics handle these, no `mode` overrides.
+//   - Encoder turn (CC 31): offset-64 relative (65 = +1, 63 = −1) → Centre64.
+//
+// Default map (see docs/devices/te-tx-6.md for the full rationale):
+//   Faders 1-2   → deck A / B channel volume
+//   Fader  3     → crossfader
+//   Fader  4     → cue mix (phones master↔cue blend)
+//   Fader  5     → headphone level
+//   Fader  6     → master volume
+//   Track 1/2 knobs (upper/middle/lower) → deck A / B EQ hi / mid / low
+//   Track 3/4 knobs → deck A / B trim / tempo / pan (best-fit free-tier
+//     continuous targets — the suggested "gain + extras" have no dedicated
+//     targets beyond Trim, so tempo + pan fill the middle/lower rows)
+//   Track buttons 1-6 → cue A/B, play A/B, SYNC A/B
+//   Encoder      → library scroll (turn) + open (press)
+//   FX I / II    → hot cue 1 on deck A / B (best-fit free-tier action —
+//     the engine FX rack is Pro-only, so the FX buttons are repurposed)
+//   Cue button   → master-cue toggle
+//
+// No `init` SysEx and no `feedback` rules: the TX-6 has no documented LED or
+// motor-fader feedback.
+Profile(
+    name: "Teenage Engineering TX-6",
+    // Case-insensitive substring against the input port name ("TX-6").
+    port_match: "TX-6",
+    inputs: [
+        // ─── Faders 1–6 (CC 1–6, absolute) ───────────────────────────────────
+        InputBinding(status: 0xB0, data1: 1,  target: ChannelVolume(A)),  // fader 1
+        InputBinding(status: 0xB0, data1: 2,  target: ChannelVolume(B)),  // fader 2
+        InputBinding(status: 0xB0, data1: 3,  target: Crossfade),         // fader 3
+        InputBinding(status: 0xB0, data1: 4,  target: CueMix),            // fader 4
+        InputBinding(status: 0xB0, data1: 5,  target: HeadphoneLevel),    // fader 5
+        InputBinding(status: 0xB0, data1: 6,  target: Master),            // fader 6
+
+        // ─── Track knobs (upper = CC 6+N, middle = CC 12+N, lower = CC 18+N) ─
+        // Tracks 1–2 → the two decks' 3-band EQ.
+        InputBinding(status: 0xB0, data1: 7,  target: EqHigh(A)),   // track 1 upper
+        InputBinding(status: 0xB0, data1: 13, target: EqMid(A)),    // track 1 middle
+        InputBinding(status: 0xB0, data1: 19, target: EqLow(A)),    // track 1 lower
+        InputBinding(status: 0xB0, data1: 8,  target: EqHigh(B)),   // track 2 upper
+        InputBinding(status: 0xB0, data1: 14, target: EqMid(B)),    // track 2 middle
+        InputBinding(status: 0xB0, data1: 20, target: EqLow(B)),    // track 2 lower
+        // Tracks 3–4 → per-deck trim + best-fit free-tier continuous targets
+        // (substitutions: no free "gain extras" targets exist beyond Trim, so
+        // middle = Tempo, lower = Pan).
+        InputBinding(status: 0xB0, data1: 9,  target: Trim(A)),     // track 3 upper
+        InputBinding(status: 0xB0, data1: 15, target: Tempo(A)),    // track 3 middle
+        InputBinding(status: 0xB0, data1: 21, target: Pan(A)),      // track 3 lower
+        InputBinding(status: 0xB0, data1: 10, target: Trim(B)),     // track 4 upper
+        InputBinding(status: 0xB0, data1: 16, target: Tempo(B)),    // track 4 middle
+        InputBinding(status: 0xB0, data1: 22, target: Pan(B)),      // track 4 lower
+        // Track 5–6 knobs (CC 11/17/23 and CC 12/18/24) — unmapped (spare).
+
+        // ─── Track buttons 1–6 (CC 25–30, momentary 0/127) ───────────────────
+        InputBinding(status: 0xB0, data1: 25, target: CueMonitor(A)),  // button 1 → PFL A
+        InputBinding(status: 0xB0, data1: 26, target: CueMonitor(B)),  // button 2 → PFL B
+        InputBinding(status: 0xB0, data1: 27, target: Play(A)),        // button 3
+        InputBinding(status: 0xB0, data1: 28, target: Play(B)),        // button 4
+        InputBinding(status: 0xB0, data1: 29, target: Sync(A)),        // button 5
+        InputBinding(status: 0xB0, data1: 30, target: Sync(B)),        // button 6
+
+        // ─── Encoder (turn CC 31 offset-64 relative, press CC 32) ────────────
+        InputBinding(status: 0xB0, data1: 31, target: LibraryScroll, rel: Some(Centre64)),
+        InputBinding(status: 0xB0, data1: 32, target: LibraryOpen),
+
+        // ─── FX / global buttons ─────────────────────────────────────────────
+        // FX I / FX II → hot cue 1 on deck A / B (best-fit free-tier action;
+        // the engine FX rack is Pro-only, so no FX target is a sensible default).
+        InputBinding(status: 0xB0, data1: 33, target: HotCue(A, 0)),
+        InputBinding(status: 0xB0, data1: 34, target: HotCue(B, 0)),
+        // CC 35 / CC 36 (shift / aux buttons) — unbound (reserved).
+        // Cue button → master headphone-cue toggle.
+        InputBinding(status: 0xB0, data1: 37, target: CueMaster),
+    ],
+)
