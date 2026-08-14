@@ -17,12 +17,16 @@ pub const MVAVE_SMC_MIXER: &str = include_str!("../profiles/mvave-smc-mixer.ron"
 /// The Worlde EasyControl Plus input profile RON, embedded at build time.
 pub const WORLDE_EASYCONTROL_PLUS: &str = include_str!("../profiles/worlde-easycontrol-plus.ron");
 
+/// The Teenage Engineering TX-6 input profile RON, embedded at build time.
+pub const TE_TX6: &str = include_str!("../profiles/te-tx-6.ron");
+
 /// All bundled profile sources, in match-priority order.
 const BUILTINS: &[&str] = &[
     PIONEER_DDJ_FLX4,
     WORLDE_EASYCONTROL_9,
     MVAVE_SMC_MIXER,
     WORLDE_EASYCONTROL_PLUS,
+    TE_TX6,
 ];
 
 /// Return the built-in profile whose `name` equals `name` (exact match). Lets the
@@ -812,6 +816,102 @@ mod tests {
         let off = d.decode_bytes(&[0xB0, 18, 0]).unwrap();
         assert_eq!(off.target, Target::LoopToggle(Deck::A));
         assert_eq!(off.value, ActionValue::Absolute(0.0));
+    }
+
+    // ─── Teenage Engineering TX-6 tests ──────────────────────────────────────
+
+    #[test]
+    fn tx6_matches_port_and_binds_core_controls() {
+        let p = builtin_for_port("TX-6").expect("TX-6 profile must claim its port");
+        assert_eq!(p.name, "Teenage Engineering TX-6");
+        // Fader 1 (CC 1, ch 1) → deck A channel volume.
+        let fader = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 1,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(fader.target, Target::ChannelVolume(Deck::A));
+        assert_eq!(fader.value, ActionValue::Absolute(1.0));
+        // Track-1 upper knob (CC 7) → deck A EQ high.
+        let eq = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 7,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(eq.target, Target::EqHigh(Deck::A));
+        // Fader 3 (CC 3) → crossfader.
+        let x = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 3,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(x.target, Target::Crossfade);
+        // Fader 6 (CC 6) → master volume.
+        let m = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 6,
+                value: 127,
+            })
+            .unwrap();
+        assert_eq!(m.target, Target::Master);
+    }
+
+    #[test]
+    fn tx6_encoder_scroll_decodes_offset_64() {
+        let p = builtin_for_port("TX-6").unwrap();
+        // Encoder turn (CC 31) is offset-64 relative: 65 = +1, 63 = −1.
+        let up = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 31,
+                value: 65,
+            })
+            .unwrap();
+        assert_eq!(up.target, Target::LibraryScroll);
+        assert_eq!(up.value, ActionValue::Delta(1));
+        let down = p
+            .decode(&MidiMessage::ControlChange {
+                channel: 0,
+                controller: 31,
+                value: 63,
+            })
+            .unwrap();
+        assert_eq!(down.value, ActionValue::Delta(-1));
+    }
+
+    #[test]
+    fn tx6_cc_buttons_toggle_and_trigger() {
+        let mut d = ProfileDecoder::new(builtin_for_port("TX-6").unwrap());
+        // Track button 3 (CC 27, momentary 127/0) → Play(A): Toggle latches on
+        // press, swallows the release, flips off on the second press.
+        let on = d.decode_bytes(&[0xB0, 27, 127]).unwrap();
+        assert_eq!(on.target, Target::Play(Deck::A));
+        assert_eq!(on.value, ActionValue::Absolute(1.0));
+        assert!(
+            d.decode_bytes(&[0xB0, 27, 0]).is_none(),
+            "release is silent"
+        );
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 27, 127]).unwrap().value,
+            ActionValue::Absolute(0.0)
+        );
+        // Track button 5 (CC 29) → Sync(A): fires 1.0 on EVERY press (engine
+        // truth flips the state — same lesson as the FLX4 BEAT SYNC).
+        let s1 = d.decode_bytes(&[0xB0, 29, 127]).unwrap();
+        assert_eq!(s1.target, Target::Sync(Deck::A));
+        assert_eq!(s1.value, ActionValue::Absolute(1.0));
+        assert!(d.decode_bytes(&[0xB0, 29, 0]).is_none());
+        assert_eq!(
+            d.decode_bytes(&[0xB0, 29, 127]).unwrap().value,
+            ActionValue::Absolute(1.0)
+        );
     }
 
     // ─── JSON round-trip tests ───────────────────────────────────────────────
