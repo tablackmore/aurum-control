@@ -39,6 +39,25 @@ pub fn builtin_by_name(name: &str) -> Option<Profile> {
     })
 }
 
+/// The display `name` of every built-in profile, in `BUILTINS` (match-priority)
+/// order. Lets a consumer enumerate the bundled profiles (e.g. to populate a
+/// device-profile picker) without hardcoding the list. Names are parsed from
+/// the embedded RON once and cached for the process lifetime.
+pub fn builtin_names() -> Vec<&'static str> {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            BUILTINS
+                .iter()
+                .filter_map(|src| Profile::from_ron(src).ok())
+                .map(|p| p.name)
+                .collect()
+        })
+        .iter()
+        .map(String::as_str)
+        .collect()
+}
+
 /// Parse and return the first built-in profile whose `port_match` matches the
 /// given MIDI input port name (case-insensitive substring). `None` if no
 /// built-in claims the port. A built-in that fails to parse is skipped, not
@@ -816,6 +835,23 @@ mod tests {
         let off = d.decode_bytes(&[0xB0, 18, 0]).unwrap();
         assert_eq!(off.target, Target::LoopToggle(Deck::A));
         assert_eq!(off.value, ActionValue::Absolute(0.0));
+    }
+
+    // ─── builtin_names tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn builtin_names_lists_every_builtin_in_order() {
+        let names = builtin_names();
+        assert_eq!(
+            names.len(),
+            BUILTINS.len(),
+            "every builtin contributes its name"
+        );
+        assert!(names.contains(&"Pioneer DDJ-FLX4"));
+        assert!(names.contains(&"Teenage Engineering TX-6"));
+        // BUILTINS order is the match-priority order — consumers rely on it.
+        assert_eq!(names[0], "Pioneer DDJ-FLX4");
+        assert_eq!(*names.last().unwrap(), "Teenage Engineering TX-6");
     }
 
     // ─── Teenage Engineering TX-6 tests ──────────────────────────────────────
